@@ -1,10 +1,16 @@
-import { Client, GatewayIntentBits, Events, Partials, ButtonBuilder, ActionRowBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, Events, Partials, ButtonBuilder, ActionRowBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, Collection } from 'discord.js';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource } from '@discordjs/voice';
 import { GameConfig, GamePlayer, cardIDs, cardGuilds, initFormIDs, initFormActionIDs, whisperActions, GameState, endGameActions } from './classes.js';
 import { createRequire } from 'module';
+import url from 'url';
 
 const require = createRequire(import.meta.url);
-const { TOKEN, GUILDID, TEXTCHANNELID, VOICECHANNELID, CLIENTID } = require('./config.json');
+const fs = require('node:fs');
+const path = require('node:path');
+const __filename = url.fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const { TOKEN, GUILDID, TEXTCHANNELID, VOICECHANNELID } = require('./config.json');
 
 const CLIENT = new Client({
 	intents: [
@@ -20,25 +26,54 @@ const CLIENT = new Client({
 });
 
 
-const GUILD = CLIENT.guilds.cache.get(GUILDID);
-const VOICECHANNEL = GUILD.channels.cache.find(channel => channel.id === VOICECHANNELID);
-const TEXTCHANNEL = GUILD.channels.cache.find(channel => channel.id === TEXTCHANNELID);
+let GUILD = null;
+let VOICECHANNEL = null;
+let TEXTCHANNEL = null;
 
 let gameConfig = null;
 let gameState = null;
 
 /**  press play ****/
-CLIENT.once(Events.ClientReady, () => { console.log(`Ready to GO! _ ${CLIENT.user.tag}!`); });
+CLIENT.once(Events.ClientReady, () => { loggedIn(); });
 CLIENT.on(Events.Error, console.error);
 CLIENT.on(Events.InteractionCreate, interactionInit);
+
+CLIENT.commands = new Collection();
+
+const foldersPath = path.join(__dirname, 'commands');
+const commandFolders = fs.readdirSync(foldersPath);
+
+for (const folder of commandFolders) {
+	const commandsPath = path.join(foldersPath, folder);
+	const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.cjs'));
+	for (const file of commandFiles) {
+		const filePath = path.join(commandsPath, file);
+		const command = require(filePath);
+		// Set a new item in the Collection with the key as the command name and the value as the exported module
+		if ('data' in command && 'execute' in command) {
+			CLIENT.commands.set(command.data.name, command);
+		}
+		else {
+			console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+		}
+	}
+}
+
+
 CLIENT.login(TOKEN);
 
 
+function loggedIn() {
+	console.log(`Ready to GO! _ ${CLIENT.user.tag}!`);
+	GUILD = CLIENT.guilds.cache.get(GUILDID);
+	VOICECHANNEL = GUILD.channels.cache.find(channel => channel.id === '510206902135685133');
+	TEXTCHANNEL = GUILD.channels.cache.find(channel => channel.id === TEXTCHANNELID);
+}
+
 async function interactionInit(interaction) {
-	// alguem deu /Sueca - mensagem inicial definida no comando
 	if (interaction.isChatInputCommand() && interaction.channelId === TEXTCHANNELID) {
 		const command = interaction.client.commands.get(interaction.commandName);
-		await command.execute(interaction).then(_ => { setTimeout(() => { botTriggered(interaction); }, 2000); });
+		await command.execute(interaction).then(_ => { setTimeout(() => { botTriggered(interaction); }, 3000); });
 	}
 
 	// autocompletes
@@ -77,15 +112,16 @@ async function interactionInit(interaction) {
 }
 
 function initAutocompleteChange(interaction) {
+	interaction.deferUpdate();
 	const gamePlayer = new GamePlayer();
 	gamePlayer.id = interaction.values[0].split('#')[0];
 	gamePlayer.name = interaction.values[0].split('#')[1];
 
-	gameConfig.players.set(interaction.customId, gamePlayer);
+	if (interaction.customId === initFormIDs.DEALER) { gameConfig.dealer = gamePlayer.id; }
+	else { gameConfig.players.set(interaction.customId, gamePlayer); }
 }
 
 function initButtonClick(interaction) {
-
 	switch (interaction.customId) {
 		case initFormActionIDs.CANCEL:
 			cancelGameCreation(interaction);
@@ -120,9 +156,8 @@ function endGameButtonClick(interaction) {
 }
 
 
-// validar 4 players
 function botTriggered(interaction) {
-	areThereEnoughPlayers() ? gameIntroduction(interaction) : notEnoughPlayers(interaction);
+	!areThereEnoughPlayers() ? gameIntroduction(interaction) : notEnoughPlayers(interaction);
 }
 
 
@@ -132,13 +167,16 @@ function areThereEnoughPlayers() {
 
 
 function notEnoughPlayers(interaction) {
-	interaction.update({ content: 'not enuff players' });
+	interaction.editReply({ content: 'not enuff players' });
+	setTimeout(() => {
+		interaction.deleteReply();
+	}, 3000);
 }
 
 //
 function gameIntroduction(interaction) {
 	botVoiceIntroduction();
-	interaction.update(getGameStartForm(0));
+	interaction.editReply(getGameStartForm(0));
 	gameConfig = new GameConfig();
 }
 
@@ -148,11 +186,13 @@ function botVoiceIntroduction() {
 
 
 function getGameStartForm(page) {
+
 	// construção do formulário inicial
 	const playersArray = [];
 	VOICECHANNEL.members.forEach(member => {
 		playersArray.push(new StringSelectMenuOptionBuilder().setLabel(member.displayName).setValue(member.id + '#' + member.displayName));
 	});
+
 
 	if (page === 0) {
 		// select menus
@@ -167,14 +207,14 @@ function getGameStartForm(page) {
 		const player4Row = new ActionRowBuilder().addComponents(player4);
 
 		// action buttons
-		const cancel = new ButtonBuilder().setCustomId(BufaWizardBtnIDs.CUSTOM).setLabel('Abortar jogo').setStyle(ButtonStyle.Danger);
-		const next = new ButtonBuilder().setCustomId(BufaWizardBtnIDs.RANDOM).setLabel('Próxima página').setStyle(ButtonStyle.Primary);
+		const cancel = new ButtonBuilder().setCustomId(initFormActionIDs.CANCEL).setLabel('Abortar jogo').setStyle(ButtonStyle.Danger);
+		const next = new ButtonBuilder().setCustomId(initFormActionIDs.NEXT).setLabel('Próxima página').setStyle(ButtonStyle.Primary);
 
 		const buttonsRow = new ActionRowBuilder().addComponents(cancel, next);
 
 
 		return {
-			content: '**Configura os players ',
+			content: '**Configura os players**',
 			components: [player1Row, player2Row, player3Row, player4Row, buttonsRow],
 		};
 	}
@@ -185,14 +225,14 @@ function getGameStartForm(page) {
 		const dealerRow = new ActionRowBuilder().addComponents(dealer);
 
 		// action buttons
-		const cancel = new ButtonBuilder().setCustomId(BufaWizardBtnIDs.CUSTOM).setLabel('Abortar jogo').setStyle(ButtonStyle.Danger);
-		const previous = new ButtonBuilder().setCustomId(BufaWizardBtnIDs.RANDOM).setLabel('Próxima página').setStyle(ButtonStyle.Secondary);
-		const start = new ButtonBuilder().setCustomId(BufaWizardBtnIDs.RANDOM).setLabel('Próxima página').setStyle(ButtonStyle.Sucess);
+		const cancel = new ButtonBuilder().setCustomId(initFormActionIDs.CANCEL).setLabel('Abortar jogo').setStyle(ButtonStyle.Danger);
+		const previous = new ButtonBuilder().setCustomId(initFormActionIDs.PREVIOUS).setLabel('Página anterior').setStyle(ButtonStyle.Secondary);
+		const start = new ButtonBuilder().setCustomId(initFormActionIDs.START).setLabel('Começar jogo').setStyle(ButtonStyle.Success);
 
 		const buttonsRow = new ActionRowBuilder().addComponents(cancel, previous, start);
 
 		return {
-			content: '**Escolhe quem baralha o beat ',
+			content: '**Escolhe quem baralha o beat**',
 			components: [dealerRow, buttonsRow],
 		};
 	}
@@ -200,7 +240,8 @@ function getGameStartForm(page) {
 
 
 function cancelGameCreation(interaction) {
-	interaction.delete();
+	interaction.message.delete();
+	gameConfig = null;
 	botVoiceGoodbye();
 }
 
@@ -216,7 +257,6 @@ function usersAreReadyToGO(interaction) {
 
 
 function isGameConfigValid(interaction) {
-
 	if (!gameConfig.dealer) { return false; }
 	for (let i = 1; i <= 4; i++) {
 		if (!gameConfig.players.get(`player${i}`).id || !gameConfig.players.get(`player${i}`).name) { return false; }
@@ -224,8 +264,8 @@ function isGameConfigValid(interaction) {
 	return true;
 }
 
-function gameConfigInvalid() {
-	interaction.update({ content: 'faltam mambos g' });
+function gameConfigInvalid(interaction) {
+	interaction.update({ content: '**faltam mambos g**' });
 }
 
 
@@ -251,24 +291,30 @@ function botVoiceGameStart() {
 }
 
 function getShuffelingMessage(interaction, dealerIndex) {
-	interaction.update({ content: `O ${gameConfig.players.get(`player${dealerIndex}`).name} está a baralhar` });
+	interaction.update({ content: `O ${gameConfig.players.get(`player${dealerIndex}`).name} está a baralhar`, components: [] });
 
-	getCuttingMessage(interaction, dealerIndex);
+	setTimeout(() => {
+		getCuttingMessage(interaction, dealerIndex);
+	}, 3000);
 }
 
 function getCuttingMessage(interaction, dealerIndex) {
-	const playerIndex = (dealerIndex + 2 > 3 ? dealerIndex - 2 : dealerIndex + 2);
-	interaction.update({ content: `O ${gameConfig.players.get(`player${playerIndex}`).name} está a cortar` });
+	const playerIndex = (dealerIndex + 2 > 4 ? dealerIndex - 2 : dealerIndex + 2);
+	interaction.editReply({ content: `O ${gameConfig.players.get(`player${playerIndex}`).name} está a cortar` });
 
-	getDrawingMessage(interaction, dealerIndex);
+	setTimeout(() => {
+		getDrawingMessage(interaction, dealerIndex);
+	}, 3000);
 }
 
 function getDrawingMessage(interaction, dealerIndex) {
-	const playerIndex = (dealerIndex === 0 ? 3 : dealerIndex - 1);
-	interaction.update({ content: `O ${gameConfig.players.get(`player${playerIndex}`).name} está a distribuir` });
+	const playerIndex = (dealerIndex + 3 > 4 ? dealerIndex - 1 : dealerIndex + 3);
+	interaction.editReply({ content: `O ${gameConfig.players.get(`player${playerIndex}`).name} está a distribuir` });
 
+	setTimeout(() => {
+		gameDraw(interaction, dealerIndex);
+	}, 3000);
 
-	gameDraw(interaction, dealerIndex, gameConfig);
 }
 
 function gameDraw(interaction, dealerIndex) {
@@ -283,48 +329,44 @@ function gameDraw(interaction, dealerIndex) {
 function timeToPlay(firstRound = false) {
 	// atualiza mensagem para o jogador X jogar
 	if (!firstRound) { gameState.incrementPlayer(); }
-	gameState.interaction.update({ content: `Está na vez do ${state.gameConfig.players.get(`player${state.currentPlayer}`).name}` });
+	gameState.interaction.editReply({ content: `Está na vez do ${gameConfig.players.get(`player${gameState.currentPlayer}`).name}` });
 	whipserTimeToPlay();
 }
 
 function whipserTimeToPlay() {
 	// envia dm privada para
-	const userIDtoDM = gameState.players.get([`player${state.currentPlayer}`]).id;
+	const userIDtoDM = gameConfig.players.get(`player${gameState.currentPlayer}`).id;
 
-	const form = getCardPlayForm();
+	CLIENT.users.fetch(userIDtoDM).then(user => {
+		const form = getCardPlayForm();
+		user.send(form);
+	});
 
-	sendWhisper(form, userIDtoDM);
-}
-
-function sendWhisper(form, userIDtoDM) {
-	usersz.fetch(userIDtoDM).then(_ => user.send(form));
 }
 
 function getCardPlayForm() {
 	const cardsArray = [];
-
-	gameState[`player${state.currentPlayer}Hand`].forEach(card => {
+	gameState[`player${gameState.currentPlayer}Hand`].forEach(card => {
 
 		let cardLabel = '';
-		cardIDs.forEach((key, value) => {
+		Object.entries(cardIDs).forEach(([key, value]) => {
 			if (card.id !== value) { return; }
-			cardLabel = (key.at(1) + key.slice(1).toLowerCase());
+			cardLabel = (key.at(0) + key.slice(1).toLowerCase());
 		});
 
-		cardGuilds.forEach((key, value) => {
+		Object.entries(cardGuilds).forEach(([key, value]) => {
 			if (card.guild !== value) { return; }
-			cardLabel += (' de ' + key.at(1) + key.slice(1).toLowerCase());
+			cardLabel += (' de ' + key.at(0) + key.slice(1).toLowerCase());
 		});
-
 		cardsArray.push(new StringSelectMenuOptionBuilder().setLabel(cardLabel).setValue(card.guild + '#' + card.id));
 	});
 
 
-	const playerHand = new StringSelectMenuBuilder().setCustomId(whisperActions.CARDPLAYED).setPlaceholder('A Minha mão').addOptions(cardsArray);
+	const playerHand = new StringSelectMenuBuilder().setCustomId(whisperActions.CARDSELECTED).setPlaceholder('A Minha mão').addOptions(cardsArray);
 	const playerHandRow = new ActionRowBuilder().addComponents(playerHand);
 
 	// action buttons
-	const go = new ButtonBuilder().setCustomId(whisperActions.CARDSELECTED).setLabel('Jogar carta').setStyle(ButtonStyle.Sucess);
+	const go = new ButtonBuilder().setCustomId(whisperActions.CARDPLAYED).setLabel('Jogar carta').setStyle(ButtonStyle.Success);
 
 	const buttonsRow = new ActionRowBuilder().addComponents(go);
 
@@ -338,14 +380,15 @@ function getCardPlayForm() {
 function cardSelected(interaction) {
 	// quando o jogador seleciona uma carta
 	gameState.setTempCard(interaction.values[0]);
-
-
+	interaction.deferUpdate();
 }
 
 
 function cardPlayed(interaction) {
-	interaction.delete();
-	gameState.interaction.update({ content: `O player ${gameState.getPlayerName(gameState.currentPlayer)} jogou o ${gameState.tempCard.guild + gameState.tempCard.id}` });
+	// interaction.message.delete();
+	console.log(interaction);
+	return;
+	gameState.interaction.editReply({ content: `O player ${gameState.getPlayerName(gameState.currentPlayer)} jogou o ${gameState.tempCard.guild + gameState.tempCard.id}` });
 	gameState.checkForRenuncia();
 	gameState.nextMove();
 

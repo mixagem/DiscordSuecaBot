@@ -118,7 +118,7 @@ export class GameState {
 		this.gameConfig = null;
 	};
 
-	íncrementPlayer() {
+	incrementPlayer() {
 		this.currentPlayer = this.currentPlayer === 4
 			? 1
 			: this.currentPlayer++;
@@ -147,20 +147,19 @@ export class GameState {
 		this.tempCard = null;
 
 		Object.values(cardGuilds).forEach(guild => {
-			Object.values(cardIDs).forEach(card => {
-				this.pile.push({ guild: guild, card: card });
+			Object.values(cardIDs).forEach(id => {
+				this.pile.push({ guild: guild, id: id });
 			});
 		});
 
-		const invertedCounter = this.pile.length;
 
-		while (!!invertedCounter) {
-			const rng = randomPick(invertedCounter);
+		while (!!this.pile.length) {
+			const rng = randomPick(this.pile.length);
 			const cardDrawn = this.pile[rng];
 			const newPile = [...this.pile.slice(0, rng), ...this.pile.slice(rng + 1)];
 			this.pile = newPile;
 
-			switch (invertedCounter % 4) {
+			switch (this.pile.length % 4) {
 				case 0:
 					this.player1Hand.push(cardDrawn);
 				case 1:
@@ -172,7 +171,7 @@ export class GameState {
 			}
 		}
 
-		if (!this.isHandValid(this.shuffleNewDeck())) { }
+		if (!this.isHandValid()) { this.shuffleNewDeck(); }
 	}
 
 	isHandValid() {
@@ -188,7 +187,7 @@ export class GameState {
 		if (this.tempCard.guild === guildToFollow) { return; }
 
 		// tinha carte do naipe, há renuncia
-		const playerHand = this[`player${state.currentPlayer}Hand`];
+		const playerHand = this[`player${this.currentPlayer}Hand`];
 		for (const card of playerHand) {
 			if (card.guild === guildToFollow) { this.renunciaFound(); }
 		}
@@ -204,7 +203,7 @@ export class GameState {
 	nextMove() {
 		this.pile.push(this.tempCard);
 		for (let i = 0; i < this[`player${this.currentPlayer}Hand`].length; i++) {
-			if (card.id === this.tempCard.id) {
+			if (this[`player${this.currentPlayer}Hand`][i].id === this.tempCard.id) {
 				this[`player${this.currentPlayer}Hand`] = [
 					...this[`player${this.currentPlayer}Hand`].slice(0, i),
 					...this[`player${this.currentPlayer}Hand`].slice(i + 1),
@@ -230,14 +229,14 @@ export class GameState {
 
 		for (let i = 1; i < 4; i++) {
 			const nextCard = this.pile[i];
-			const newWinningCard = headToHeadCards(currentWinningCard, nextCard);
+			const newWinningCard = this.headToHeadCards(currentWinningCard, nextCard);
 			if (nextCard === newWinningCard) {
 				currentWinningCard = nextCard;
 				currentWinningPlayer = (firstPlayer + i > 4 ? firstPlayer + i - 4 : firstPlayer);
 			}
 		}
 
-		const winner = (!!currentWinningPlayer % 2 ? teamIDs.teamA : teamIDs.teamB);
+		const winner = (!!currentWinningPlayer % 2 ? 'teamA' : 'teamB');
 		this[`${winner}ScorePile`].push(...this.pile);
 		this.pile = [];
 		return winner;
@@ -291,7 +290,7 @@ export class GameState {
 		if (this.gameScore.teamA > this.gameScore.teamB) {
 			this.continuousScore.teamA += isCapote ? 3 : 1;
 		}
- else if (this.gameScore.teamA < this.gameScore.teamB) {
+		else if (this.gameScore.teamA < this.gameScore.teamB) {
 			this.continuousScore.teamB += isCapote ? 3 : 1;
 		}
 	}
