@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits, Events, Partials, ButtonBuilder, ActionRowBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, Collection } from 'discord.js';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource } from '@discordjs/voice';
-import { GameConfig, GamePlayer, cardIDs, cardGuilds, initFormIDs, initFormActionIDs, whisperActions, GameState, endGameActions } from './classes.js';
+import { GameConfig, GamePlayer, Cards, Guilds, InitFormAutocompletes, InitFormButtons, WhisperButtons, GameState, GameOverEmbedActions } from './classes.js';
 import { createRequire } from 'module';
 import url from 'url';
 
@@ -83,13 +83,13 @@ async function interactionInit(interaction) {
 	if (interaction.isStringSelectMenu()) {
 
 		// init form autocomplete
-		if (Object.values(initFormIDs).includes(interaction.customId)) {
+		if (Object.values(InitFormAutocompletes).includes(interaction.customId)) {
 			initAutocompleteChange(interaction);
 		}
 
 		// whisper autocomplete
 		switch (interaction.customId) {
-			case whisperActions.CARDSELECTED:
+			case WhisperButtons.CARDSELECTED:
 				cardSelected(interaction);
 				break;
 		}
@@ -100,18 +100,19 @@ async function interactionInit(interaction) {
 	if (interaction.isButton()) {
 
 		// init form buttons
-		if (Object.values(initFormActionIDs).includes(interaction.customId)) {
+		if (Object.values(InitFormButtons).includes(interaction.customId)) {
 			initButtonClick(interaction);
 		}
 
 		// whisper button
 		switch (interaction.customId) {
-			case whisperActions.CARDPLAYED:
+			case WhisperButtons.CARDPLAYED:
 				cardPlayed(interaction);
 				break;
 		}
 
 		// 💛 v1 -> Ações pós jogo para continuar jogo
+		// 💛 v1 -> Ações para renuncia
 
 	}
 }
@@ -122,23 +123,23 @@ function initAutocompleteChange(interaction) {
 	gamePlayer.id = interaction.values[0].split('#')[0];
 	gamePlayer.name = interaction.values[0].split('#')[1];
 
-	if (interaction.customId === initFormIDs.DEALER) { gameConfig.dealer = gamePlayer.id; }
-	else if (interaction.customId === initFormIDs.TRUNFO) { gameConfig.trunfo = interaction.values[0]; }
+	if (interaction.customId === InitFormAutocompletes.DEALER) { gameConfig.dealer = gamePlayer.id; }
+	else if (interaction.customId === InitFormAutocompletes.TRUNFO) { gameConfig.trunfo = interaction.values[0]; }
 	else { gameConfig.players.set(interaction.customId, gamePlayer); }
 }
 
 function initButtonClick(interaction) {
 	switch (interaction.customId) {
-		case initFormActionIDs.CANCEL:
+		case InitFormButtons.CANCEL:
 			cancelGameCreation(interaction);
 			break;
-		case initFormActionIDs.NEXT:
+		case InitFormButtons.NEXT:
 			interaction.update(getGameStartForm(1));
 			break;
-		case initFormActionIDs.PREVIOUS:
+		case InitFormButtons.PREVIOUS:
 			interaction.update(getGameStartForm(0));
 			break;
-		case initFormActionIDs.START:
+		case InitFormButtons.START:
 			usersAreReadyToGO(interaction);
 			break;
 	}
@@ -171,7 +172,7 @@ function gameIntroduction(interaction) {
 }
 
 function botVoiceIntroduction() {
-	// bot entra na sala e toca um clip inicial. 💛 v5
+	// bot entra na sala e toca um clip inicial. 💛 v2
 }
 
 
@@ -183,19 +184,19 @@ function getGameStartForm(page) {
 
 
 	if (page === 0) {
-		const player1 = new StringSelectMenuBuilder().setCustomId(initFormIDs.PLAYER1).setPlaceholder('👲 Jogador 1').addOptions(playersArray);
-		const player2 = new StringSelectMenuBuilder().setCustomId(initFormIDs.PLAYER2).setPlaceholder('🤶 Jogador 2').addOptions(playersArray);
-		const player3 = new StringSelectMenuBuilder().setCustomId(initFormIDs.PLAYER3).setPlaceholder('👳‍♂️ Jogador 3').addOptions(playersArray);
-		const player4 = new StringSelectMenuBuilder().setCustomId(initFormIDs.PLAYER4).setPlaceholder('👨‍🦰 Jogador 4').addOptions(playersArray);
+		const player1 = new StringSelectMenuBuilder().setCustomId(InitFormAutocompletes.PLAYER1).setPlaceholder('👲 Jogador 1').addOptions(playersArray);
+		const player2 = new StringSelectMenuBuilder().setCustomId(InitFormAutocompletes.PLAYER2).setPlaceholder('🤶 Jogador 2').addOptions(playersArray);
+		const player3 = new StringSelectMenuBuilder().setCustomId(InitFormAutocompletes.PLAYER3).setPlaceholder('👳‍♂️ Jogador 3').addOptions(playersArray);
+		const player4 = new StringSelectMenuBuilder().setCustomId(InitFormAutocompletes.PLAYER4).setPlaceholder('👨‍🦰 Jogador 4').addOptions(playersArray);
 
 		const player1Row = new ActionRowBuilder().addComponents(player1);
 		const player2Row = new ActionRowBuilder().addComponents(player2);
 		const player3Row = new ActionRowBuilder().addComponents(player3);
 		const player4Row = new ActionRowBuilder().addComponents(player4);
 
-		// action buttons
-		const cancel = new ButtonBuilder().setCustomId(initFormActionIDs.CANCEL).setLabel('🚫 Cancelar jogatana').setStyle(ButtonStyle.Danger);
-		const next = new ButtonBuilder().setCustomId(initFormActionIDs.NEXT).setLabel('⏩ Seguinte').setStyle(ButtonStyle.Primary);
+
+		const cancel = new ButtonBuilder().setCustomId(InitFormButtons.CANCEL).setLabel('🚫 Cancelar jogatana').setStyle(ButtonStyle.Danger);
+		const next = new ButtonBuilder().setCustomId(InitFormButtons.NEXT).setLabel('⏩ Seguinte').setStyle(ButtonStyle.Primary);
 
 		const buttonsRow = new ActionRowBuilder().addComponents(cancel, next);
 
@@ -207,20 +208,20 @@ function getGameStartForm(page) {
 	}
 
 	if (page === 1) {
-		// select menus
-		const dealer = new StringSelectMenuBuilder().setCustomId(initFormIDs.DEALER).setPlaceholder('Quem é que vai baralhar o beat?').addOptions(playersArray);
+
+		const dealer = new StringSelectMenuBuilder().setCustomId(InitFormAutocompletes.DEALER).setPlaceholder('Quem é que vai baralhar o beat?').addOptions(playersArray);
 		const dealerRow = new ActionRowBuilder().addComponents(dealer);
 
-		const trunfo = new StringSelectMenuBuilder().setCustomId(initFormIDs.TRUNFO).setPlaceholder('O trunfo vem de cima ou baixo?').addOptions([
+		const trunfo = new StringSelectMenuBuilder().setCustomId(InitFormAutocompletes.TRUNFO).setPlaceholder('O trunfo vem de cima ou baixo?').addOptions([
 			new StringSelectMenuOptionBuilder().setValue('up').setLabel('🔼 Cima'),
 			new StringSelectMenuOptionBuilder().setValue('down').setLabel('🔽 Baixo'),
 		]);
 		const trunfoRow = new ActionRowBuilder().addComponents(trunfo);
 
-		// action buttons
-		const cancel = new ButtonBuilder().setCustomId(initFormActionIDs.CANCEL).setLabel('🚫 Cancelar jogatana').setStyle(ButtonStyle.Danger);
-		const previous = new ButtonBuilder().setCustomId(initFormActionIDs.PREVIOUS).setLabel('⏪ Anterior').setStyle(ButtonStyle.Secondary);
-		const start = new ButtonBuilder().setCustomId(initFormActionIDs.START).setLabel('🃏 Começar jogo').setStyle(ButtonStyle.Success);
+
+		const cancel = new ButtonBuilder().setCustomId(InitFormButtons.CANCEL).setLabel('🚫 Cancelar jogatana').setStyle(ButtonStyle.Danger);
+		const previous = new ButtonBuilder().setCustomId(InitFormButtons.PREVIOUS).setLabel('⏪ Anterior').setStyle(ButtonStyle.Secondary);
+		const start = new ButtonBuilder().setCustomId(InitFormButtons.START).setLabel('🃏 Começar jogo').setStyle(ButtonStyle.Success);
 
 		const buttonsRow = new ActionRowBuilder().addComponents(cancel, previous, start);
 
@@ -239,7 +240,7 @@ function cancelGameCreation(interaction) {
 }
 
 function botVoiceGoodbye() {
-	// toca um audio clip e sai do canal. 💛 v5
+	// toca um audio clip e sai do canal. 💛 v2
 }
 
 
@@ -274,7 +275,7 @@ function gameStart(interaction) {
 }
 
 function botVoiceGameStart() {
-	// form okay, lets go. dá uma musiquinha de leve tipo jazz. 💛 v5
+	// form okay, lets go. dá uma musiquinha de leve tipo jazz. 💛 v2
 }
 
 function getShuffelingMessage(interaction, dealerIndex) {
@@ -311,15 +312,31 @@ function gameDraw(interaction, dealerIndex) {
 	gameState.interaction = interaction;
 	gameState.gameConfig = gameConfig;
 	gameState.setTrunfo();
-	timeToPlay(true);
+	timeToPlay();
 }
 
 
-function timeToPlay(firstRound = false) {
+function timeToPlay() {
 	if (devmode) { console.log('timeToPlay'); }
-	if (!firstRound) { gameState.incrementPlayer(); }
-	const content = `\nNa mesa temos ${gameState.getPileText()}`;
-	gameState.interaction.editReply({ content: `Está na vez do **${gameConfig.players.get(`player${gameState.currentPlayer}`).name}** jogar.\nO trunfo é ${gameState.getNaipeName(gameState.trunfo)}.${!!gameState.pile.length ? content : ''}` });
+
+	const whosTurnContent = `Está na vez do **${gameConfig.players.get(`player${gameState.currentPlayer}`).name}** jogar.`;
+	const trunfoContent = `O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.`;
+	const pileContent = `Na mesa temos: ${gameState.getPileText()}`;
+
+	const renunciaButton = [new ButtonBuilder().setCustomId('renuncia').setLabel('🛂 Renuncia!!').setStyle(ButtonStyle.Danger)];
+	const buttonsRow = [];
+
+	let content = whosTurnContent + ' ' + trunfoContent;
+	if (!!gameState.pile.length) {
+		const previouslyTurnContent = `O ${gameConfig.players.get(`player${gameState.currentPlayer - 1 === 0 ? 4 : gameState.currentPlayer - 1}`).name}** jogou ${gameState.getPileText([gameState.pile.at(-1)])}`;
+		content = previouslyTurnContent + '\n' + content;
+		content += '\n' + pileContent;
+	}
+	if (!!gameState.previousRound) { content += '\n' + `A equipa ${gameState.previousRound.winningTeam} varreu a ronda anterior, levaram ${gameState.previousRound.score} pontos para o cubico. ` + gameState.getPileText(gameState.previousRound.pile); }
+
+	if (!!gameState.pile.length || !!gameState.previousRound) { buttonsRow.push(new ActionRowBuilder().addComponents(renunciaButton)); };
+
+	gameState.interaction.editReply({ content: content, components: buttonsRow });
 	whipserTimeToPlay();
 }
 
@@ -339,31 +356,40 @@ function getCardPlayForm() {
 	gameState[`player${gameState.currentPlayer}Hand`].forEach(card => {
 		let cardLabel = '';
 
-		for (const [key, value] of Object.entries(cardIDs)) {
+		for (const [key, value] of Object.entries(Cards)) {
 			if (card.id !== value) { continue; }
 			cardLabel = (key.at(0) + key.slice(1).toLowerCase());
 		}
 
-		Object.entries(cardGuilds).forEach(([key, value]) => {
+		Object.entries(Guilds).forEach(([key, value]) => {
 			if (card.guild !== value) { return; }
 			cardLabel += (' de ' + key.at(0) + key.slice(1).toLowerCase());
 		});
+
+		if (card.guild === gameState.trunfo) {
+			cardLabel += ' 💥';
+		}
+
+		if (!!gameState.pile.length && card.guild === gameState.pile[0].guild) {
+			cardLabel += ' 🛂';
+		}
 
 		cardsArray.push(new StringSelectMenuOptionBuilder().setLabel(cardLabel).setValue(card.guild + '#' + card.id));
 	});
 
 
-	const playerHand = new StringSelectMenuBuilder().setCustomId(whisperActions.CARDSELECTED).setPlaceholder('🃏 A Minha mão').addOptions(cardsArray);
+	const playerHand = new StringSelectMenuBuilder().setCustomId(WhisperButtons.CARDSELECTED).setPlaceholder('🃏 A Minha mão').addOptions(cardsArray);
 	const playerHandRow = new ActionRowBuilder().addComponents(playerHand);
 
 
-	const go = new ButtonBuilder().setCustomId(whisperActions.CARDPLAYED).setLabel('🃏 Jogar carta').setStyle(ButtonStyle.Success);
+	const go = new ButtonBuilder().setCustomId(WhisperButtons.CARDPLAYED).setLabel('🃏 Jogar carta').setStyle(ButtonStyle.Success);
 	const buttonsRow = new ActionRowBuilder().addComponents(go);
 
 	const firstPlayerContent = 'Não existem cartas na mesa.';
 	const notFirstPlayerContent = 'Na mesa estão as seguintes cartas: ' + gameState.getPileText();
+
 	return {
-		content: '**Escolhe a carta que queres jogar.** - ' + !!gameState.pile.length ? notFirstPlayerContent : firstPlayerContent,
+		content: `**Escolhe a carta que queres jogar. O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.** - ` + (!!gameState.pile.length ? notFirstPlayerContent : firstPlayerContent) + (devmode ? `és o player numero ${gameState.currentPlayer}` : ''),
 		components: [playerHandRow, buttonsRow],
 	};
 }
@@ -379,8 +405,6 @@ function cardSelected(interaction) {
 
 function cardPlayed(interaction) {
 	if (devmode) { console.log('cardPlayed'); }
-	// 💛 v2 -> atualizar texto do canal com "o user jogar a carta X"
-
 	interaction.message.delete();
 	gameState.nextMove();
 	gameState.isRoundOver() ? roundEnded() : timeToPlay();
@@ -388,23 +412,40 @@ function cardPlayed(interaction) {
 
 function roundEnded() {
 	if (devmode) { console.log('roundEnded'); }
-	// 💛 v4 -> atualizar texto do canal com a equipa que ganhou, e quantos pontos limpou
-	gameState.checkForRoundWinner(); // <- dá return da letra da equipa vencedora
+	gameState.checkForRoundWinner();
 	gameState.isGameOver() ? gameEnded() : timeToPlay();
 }
 
 
 function gameEnded() {
 	if (devmode) { console.log('gameEnded'); }
-	botVoiceGameEnd();
-	// gameState.interaction.message.edit({ content: 'jogo feito nada mais. a calcular resultaddos' });
-	gameState.calcTeamScores();
-	// 💛 v1 -> gameState.getFinalScoreBoard();  <- embed todo
 
+	const renunciaButton = [new ButtonBuilder().setCustomId('renuncia').setLabel('🛂 Renuncia!!').setStyle(ButtonStyle.Danger)];
+	const buttonsRow = [new ActionRowBuilder().addComponents(renunciaButton)];
+
+	let content = `A equipa ${gameState.previousRound.winningTeam} varreu a ronda anterior, levaram ${gameState.previousRound.score} pontos para o cubico. ` + gameState.getPileText(gameState.previousRound.pile);
+	content += '**Jogo feito, nada mais.** A calcular o resultado final, sigurem-se...';
+
+	gameState.interaction.editReply({ content: content, components: buttonsRow });
+	botVoiceGameEnd();
+	gameState.calcTeamScores();
+
+	setTimeout(() => {
+		gameEndedScoreboard();
+	}, (devmode ? 1000 : 15000));
+}
+
+function gameEndedScoreboard() {
+	let content = (gameState.gameScore.teamA === gameState.gameScore.teamB)
+		? 'Aquele empatezinho técnico, quem nunca'
+		: `E o vencedor dessa porra foi a equipa ${gameState.gameScore.teamA > gameState.gameScore.teamB ? 'A' : 'B'}. Parabéns seus caralhos. ${gameState.checkForCapote() ? 'Capote nessa porra, o rabinho deles não aguenta' : ''}`;
+
+	content += `\n**[${gameState.gameScore.teamA}] - [${gameState.gameScore.teamB}]**`;
+	gameState.interaction.editReply({ content: content });
 }
 
 function botVoiceGameEnd() {
-	//  toca uma musiquinha 💛 v5
+	//  toca uma musiquinha 💛 v2
 }
 
 // function getEndGameForm() {

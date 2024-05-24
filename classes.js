@@ -1,7 +1,7 @@
 const devmode = true;
 
 export class GameConfig {
-	players; // GamePlayer
+	players; // GamePlayer[]
 	dealer;
 	constructor() {
 		this.players = new Map();
@@ -27,16 +27,29 @@ export class GameCard {
 	};
 }
 
-export const cardGuilds = {
+export class GameRound {
+	winnerIndex;
+	winningTeam;
+	pile;
+	score;
+	constructor() {
+		this.winnerIndex = 0;
+		this.winningTeam = '';
+		this.pile = [];
+		this.score = 0;
+
+	}
+}
+
+export const Guilds = {
 	'OUROS': 'diamonds',
 	'PAUS': 'clubs',
 	'ESPADAS': 'spades',
 	'COPAS': 'hearts',
 };
 
-
-export const cardIDs = devmode
-	? { 'ÁS': 1 }
+export const Cards = devmode
+	? { 'ÁS': 1, 'MANILHA': 7 }
 	: {
 		'ÁS': 1,
 		'DOIS': 2,
@@ -50,21 +63,19 @@ export const cardIDs = devmode
 		'REI': 13,
 	};
 
-export const teamIDs = {
-	'teamA': 1,
-	'teamB': 2,
+export const Teams = {
+	'A': 'A',
+	'B': 'B',
 };
 
-
-export const initFormActionIDs = {
+export const InitFormButtons = {
 	'NEXT': 'next',
 	'PREVIOUS': 'prev',
 	'CANCEL': 'cancel',
 	'START': 'start',
 };
 
-
-export const initFormIDs = {
+export const InitFormAutocompletes = {
 	'PLAYER1': 'player1',
 	'PLAYER2': 'player2',
 	'PLAYER3': 'player3',
@@ -73,30 +84,30 @@ export const initFormIDs = {
 	'TRUNFO': 'trunfo',
 };
 
-export const whisperActions = {
+export const WhisperButtons = {
 	'CARDPLAYED': 'cardPlayed',
 	'CARDSELECTED': 'cardSelected',
 };
 
-export const endGameActions = {
+export const GameOverEmbedActions = {
 	'END': 'endGame',
 	'MORE': 'nextGame',
 	'RESET': 'resetAcomulated',
 };
 
-export const cardScoresMap = new Map();
+export const CardScores = new Map();
 if (!devmode) {
-	cardScoresMap.set(cardIDs.DOIS, 0.2);
-	cardScoresMap.set(cardIDs.TRÊS, 0.3);
-	cardScoresMap.set(cardIDs.QUATRO, 0.4);
-	cardScoresMap.set(cardIDs.CINCO, 0.5);
-	cardScoresMap.set(cardIDs.SEIS, 0.6);
-	cardScoresMap.set(cardIDs.VALETE, 2);
-	cardScoresMap.set(cardIDs.DAMA, 3);
-	cardScoresMap.set(cardIDs.REI, 4);
-	cardScoresMap.set(cardIDs.MANILHA, 10);
+	CardScores.set(Cards.DOIS, 0.2);
+	CardScores.set(Cards.TRÊS, 0.3);
+	CardScores.set(Cards.QUATRO, 0.4);
+	CardScores.set(Cards.CINCO, 0.5);
+	CardScores.set(Cards.SEIS, 0.6);
+	CardScores.set(Cards.VALETE, 2);
+	CardScores.set(Cards.DAMA, 3);
+	CardScores.set(Cards.REI, 4);
 }
-cardScoresMap.set(cardIDs.ÁS, 11);
+CardScores.set(Cards.MANILHA, 10);
+CardScores.set(Cards.ÁS, 11);
 
 // min 0, max = size - 1
 function randomPick(size) { return Math.floor(Math.random() * size); };
@@ -117,6 +128,7 @@ export class GameState {
 	interaction;
 	gameConfig;
 	tempCard;
+	previousRound;
 
 	constructor() {
 		this.shuffleNewDeck();
@@ -152,9 +164,10 @@ export class GameState {
 		this.currentPlayer = 1;
 		this.gameScore = { teamA: 0, teamB: 0 };
 		this.tempCard = null;
+		this.previousRound = null;
 
-		Object.values(cardGuilds).forEach(guild => {
-			Object.values(cardIDs).forEach(id => {
+		Object.values(Guilds).forEach(guild => {
+			Object.values(Cards).forEach(id => {
 				this.pile.push({ guild: guild, id: id });
 			});
 		});
@@ -188,32 +201,28 @@ export class GameState {
 
 	getNaipeName(guildId) {
 		switch (guildId) {
-			case cardGuilds.COPAS:
+			case Guilds.COPAS:
 				return 'Copas :hearts:';
-			case cardGuilds.OUROS:
+			case Guilds.OUROS:
 				return 'Ouros :diamonds:';
-			case cardGuilds.PAUS:
+			case Guilds.PAUS:
 				return 'Paus :clubs:';
-			case cardGuilds.ESPADAS:
+			case Guilds.ESPADAS:
 				return 'Espadas :spades:';
 		}
 	}
 
-	getPileText() {
+	getPileText(pile = this.pile) {
 		let string = '';
 
-		for (let i = 0; i < this.pile.length; i++) {
+		for (let i = 0; i < pile.length; i++) {
 
-			for (const [key, value] of Object.entries(cardIDs)) {
-				if (+this.pile[i].id !== value) { continue; }
-				string += (key.at(0) + key.slice(1).toLowerCase());
+			for (const [key, value] of Object.entries(Cards)) {
+				if (+pile[i].id !== value) { continue; }
+				string += '[ ' + (key.at(0) + key.slice(1).toLowerCase());
 			}
 
-			string += ' de ' + this.getNaipeName(this.pile[i].guild) + ', ';
-
-			if (i + 1 === this.pile.length) {
-				string = string.slice(0, -2) + '.';
-			}
+			string += ' de ' + this.getNaipeName(pile[i].guild) + ']  ';
 		}
 		return string;
 	}
@@ -245,7 +254,10 @@ export class GameState {
 		// tinha carte do naipe, há renuncia
 		const playerHand = this[`player${this.currentPlayer}Hand`];
 		for (const card of playerHand) {
-			if (card.guild === guildToFollow) { this.renunciaFound(); }
+			if (card.guild === guildToFollow) {
+				this.renunciaFound();
+				return;
+			}
 		}
 
 		return;
@@ -253,7 +265,7 @@ export class GameState {
 
 	renunciaFound() {
 		const currentRound = Math.floor([...this.teamAScorePile, ...this.teamBScorePile].length / 4) + 1;
-		this.renuncia.push({ offender: this.getPlayerName(this.currentPlayer), play: this.pile, round: currentRound });
+		this.renuncia.push({ offender: this.getPlayerName(this.currentPlayer), play: [...this.pile, this.tempCard], round: currentRound });
 	}
 
 	nextMove() {
@@ -270,32 +282,44 @@ export class GameState {
 				break;
 			}
 		}
+		this.incrementPlayer();
 	}
 
 	isRoundOver() {
 		return this.pile.length === 4;
 	}
 
+	calcScore(pile) {
+		let score = 0;
+		pile.forEach(card => { score += Math.floor(CardScores.get(+card.id)); });
+		return score;
+	}
+
 	checkForRoundWinner() {
-		const lastPlayer = this.currentPlayer;
+		this.previousRound = new GameRound();
+		this.previousRound.pile = [...this.pile];
+		this.previousRound.score = this.calcScore(this.previousRound.pile);
+		const lastPlayer = this.currentPlayer === 1 ? 4 : this.currentPlayer - 1;
 		const firstPlayer = lastPlayer === 4 ? 1 : lastPlayer + 1;
 
 		let currentWinningCard = this.pile[0];
-		let currentWinningPlayer = firstPlayer; // o vençedor começar com o primeiro jogador
-
+		this.previousRound.winnerIndex = firstPlayer; // o vençedor começar com o primeiro jogador
 		for (let i = 1; i < 4; i++) {
-			const nextCard = this.pile[i];
+			const nextCard = structuredClone(this.pile[i]);
 			const newWinningCard = this.headToHeadCards(currentWinningCard, nextCard);
-			if (nextCard === newWinningCard) {
-				currentWinningCard = nextCard;
-				currentWinningPlayer = (firstPlayer + i > 4 ? firstPlayer + i - 4 : firstPlayer);
+			if (this.areTheCardsTheSame(nextCard, newWinningCard)) {
+				currentWinningCard = structuredClone(nextCard);
+				this.previousRound.winnerIndex = (firstPlayer + i > 4 ? firstPlayer + i - 4 : firstPlayer + i);
 			}
 		}
-
-		const winner = (!!currentWinningPlayer % 2 ? 'A' : 'B');
-		this[`team${winner}ScorePile`].push(...this.pile);
+		this.previousRound.winningTeam = ((!!(this.previousRound.winnerIndex % 2)) ? Teams.A : Teams.B);
+		this[`team${this.previousRound.winningTeam}ScorePile`].push(...this.pile);
 		this.pile = [];
-		return winner;
+		this.currentPlayer = this.previousRound.winnerIndex;
+	}
+
+	areTheCardsTheSame(card1, card2) {
+		return +card1.id === +card2.id && card1.guild === card2.guild;
 	}
 
 	headToHeadCards(card1, card2) {
@@ -305,7 +329,7 @@ export class GameState {
 			if (card1.guild !== this.trunfo) { return card2; }
 
 			// se a original era trunfo, temos de ver a maior
-			return cardScoresMap.get(card1.id) > cardScoresMap.get(card2.id)
+			return CardScores.get(+card1.id) > CardScores.get(+card2.id)
 				? card1
 				: card2;
 		}
@@ -319,13 +343,13 @@ export class GameState {
 		if (card1.guild !== card2.guild) { return card1; }
 
 		// se nenhuma delas é trunfo, e são do mesmo naipe, temos de ver a maior
-		return cardScoresMap.get(card1.id) > cardScoresMap.get(card2.id)
+		return CardScores.get(+card1.id) > CardScores.get(+card2.id)
 			? card1
 			: card2;
 	}
 
 	isGameOver() {
-		return [...this.teamAScorePile, ...this.teamBScorePile].length === 4;
+		return [...this.teamAScorePile, ...this.teamBScorePile].length === (devmode ? 8 : 40);
 	}
 
 	getFinalScoreBoard() {
@@ -334,11 +358,11 @@ export class GameState {
 
 	calcTeamScores() {
 		let score = 0;
-		this.teamAScorePile.forEach(card => { score += Math.floor(cardScoresMap.get(+card.id)); });
+		this.teamAScorePile.forEach(card => { score += Math.floor(CardScores.get(+card.id)); });
 		this.gameScore.teamA = score;
 
 		score = 0;
-		this.teamBScorePile.forEach(card => { score += Math.floor(cardScoresMap.get(+card.id)); });
+		this.teamBScorePile.forEach(card => { score += Math.floor(CardScores.get(+card.id)); });
 		this.gameScore.teamB = score;
 
 
@@ -346,7 +370,7 @@ export class GameState {
 	}
 
 	updateContinousScores() {
-		const isCapote = this.checkForCapote(this.gameScore.teamA, this.gameScore.teamB);
+		const isCapote = this.checkForCapote();
 
 		if (this.gameScore.teamA > this.gameScore.teamB) {
 			this.continuousScore.teamA += isCapote ? 3 : 1;
@@ -356,14 +380,11 @@ export class GameState {
 		}
 	}
 
-	checkForCapote(scoreA, scoreB) {
+	checkForCapote(scoreA = this.gameScore.teamA, scoreB = this.gameScore.teamB) {
 		const diff = (scoreA > scoreB ? scoreA - scoreB : scoreB - scoreA);
 		return diff >= 90;
 	}
 
-	getGameWinner() {
-		// this.calcTeamScores()
-	}
 
 	resetContinousScores() {
 		this.continuousScore.teamA = 0;
