@@ -1,3 +1,5 @@
+const devmode = true;
+
 export class GameConfig {
 	players; // GamePlayer
 	dealer;
@@ -32,18 +34,21 @@ export const cardGuilds = {
 	'COPAS': 'hearts',
 };
 
-export const cardIDs = {
-	'ÁS': 1,
-	'DOIS': 2,
-	'TRÊS': 3,
-	'QUATRO': 4,
-	'CINCO': 5,
-	'SEIS': 6,
-	'MANILHA': 7,
-	'VALETE': 11,
-	'DAMA': 12,
-	'REI': 13,
-};
+
+export const cardIDs = devmode
+	? { 'ÁS': 1 }
+	: {
+		'ÁS': 1,
+		'DOIS': 2,
+		'TRÊS': 3,
+		'QUATRO': 4,
+		'CINCO': 5,
+		'SEIS': 6,
+		'MANILHA': 7,
+		'VALETE': 11,
+		'DAMA': 12,
+		'REI': 13,
+	};
 
 export const teamIDs = {
 	'teamA': 1,
@@ -65,6 +70,7 @@ export const initFormIDs = {
 	'PLAYER3': 'player3',
 	'PLAYER4': 'player4',
 	'DEALER': 'dealer',
+	'TRUNFO': 'trunfo',
 };
 
 export const whisperActions = {
@@ -79,17 +85,18 @@ export const endGameActions = {
 };
 
 export const cardScoresMap = new Map();
-cardScoresMap.set(cardIDs.DOIS, 0.2);
-cardScoresMap.set(cardIDs.TRÊS, 0.3);
-cardScoresMap.set(cardIDs.QUATRO, 0.4);
-cardScoresMap.set(cardIDs.CINCO, 0.5);
-cardScoresMap.set(cardIDs.SEIS, 0.6);
-cardScoresMap.set(cardIDs.VALETE, 2);
-cardScoresMap.set(cardIDs.DAMA, 3);
-cardScoresMap.set(cardIDs.REI, 4);
-cardScoresMap.set(cardIDs.MANILHA, 10);
+if (!devmode) {
+	cardScoresMap.set(cardIDs.DOIS, 0.2);
+	cardScoresMap.set(cardIDs.TRÊS, 0.3);
+	cardScoresMap.set(cardIDs.QUATRO, 0.4);
+	cardScoresMap.set(cardIDs.CINCO, 0.5);
+	cardScoresMap.set(cardIDs.SEIS, 0.6);
+	cardScoresMap.set(cardIDs.VALETE, 2);
+	cardScoresMap.set(cardIDs.DAMA, 3);
+	cardScoresMap.set(cardIDs.REI, 4);
+	cardScoresMap.set(cardIDs.MANILHA, 10);
+}
 cardScoresMap.set(cardIDs.ÁS, 11);
-
 
 // min 0, max = size - 1
 function randomPick(size) { return Math.floor(Math.random() * size); };
@@ -119,9 +126,9 @@ export class GameState {
 	};
 
 	incrementPlayer() {
-		this.currentPlayer = this.currentPlayer === 4
+		this.currentPlayer = (this.currentPlayer === 4)
 			? 1
-			: this.currentPlayer++;
+			: this.currentPlayer + 1;
 	}
 
 	getPlayerName(index) {
@@ -162,19 +169,68 @@ export class GameState {
 			switch (this.pile.length % 4) {
 				case 0:
 					this.player1Hand.push(cardDrawn);
+					break;
 				case 1:
 					this.player2Hand.push(cardDrawn);
+					break;
 				case 2:
 					this.player3Hand.push(cardDrawn);
+					break;
 				case 3:
 					this.player4Hand.push(cardDrawn);
+					break;
 			}
 		}
 
 		if (!this.isHandValid()) { this.shuffleNewDeck(); }
+
+	}
+
+	getNaipeName(guildId) {
+		switch (guildId) {
+			case cardGuilds.COPAS:
+				return 'Copas :hearts:';
+			case cardGuilds.OUROS:
+				return 'Ouros :diamonds:';
+			case cardGuilds.PAUS:
+				return 'Paus :clubs:';
+			case cardGuilds.ESPADAS:
+				return 'Espadas :spades:';
+		}
+	}
+
+	getPileText() {
+		let string = '';
+
+		for (let i = 0; i < this.pile.length; i++) {
+
+			for (const [key, value] of Object.entries(cardIDs)) {
+				if (+this.pile[i].id !== value) { continue; }
+				string += (key.at(0) + key.slice(1).toLowerCase());
+			}
+
+			string += ' de ' + this.getNaipeName(this.pile[i].guild) + ', ';
+
+			if (i + 1 === this.pile.length) {
+				string = string.slice(0, -2) + '.';
+			}
+		}
+		return string;
+	}
+
+	setTrunfo() {
+		if (this.gameConfig.trunfo === 'up') { this.trunfo = this[`player${this.currentPlayer}Hand`][0].guild; }
+		else {
+			const lastPlayer = (this.currentPlayer + 3 > 4)
+				? this.currentPlayer - 1
+				: this.currentPlayer + 3;
+
+			this.trunfo = this[`player${lastPlayer}Hand`][0].guild;
+		}
 	}
 
 	isHandValid() {
+		if (devmode) { return true; }
 		// tem de ter 10 pontos, ou 1 trunfo no mínimo
 		return true;
 	}
@@ -201,9 +257,11 @@ export class GameState {
 	}
 
 	nextMove() {
+		this.checkForRenuncia();
 		this.pile.push(this.tempCard);
 		for (let i = 0; i < this[`player${this.currentPlayer}Hand`].length; i++) {
-			if (this[`player${this.currentPlayer}Hand`][i].id === this.tempCard.id) {
+			if ((this[`player${this.currentPlayer}Hand`][i].id === +this.tempCard.id)
+				&& (this[`player${this.currentPlayer}Hand`][i].guild === this.tempCard.guild)) {
 				this[`player${this.currentPlayer}Hand`] = [
 					...this[`player${this.currentPlayer}Hand`].slice(0, i),
 					...this[`player${this.currentPlayer}Hand`].slice(i + 1),
@@ -212,8 +270,6 @@ export class GameState {
 				break;
 			}
 		}
-
-
 	}
 
 	isRoundOver() {
@@ -236,8 +292,8 @@ export class GameState {
 			}
 		}
 
-		const winner = (!!currentWinningPlayer % 2 ? 'teamA' : 'teamB');
-		this[`${winner}ScorePile`].push(...this.pile);
+		const winner = (!!currentWinningPlayer % 2 ? 'A' : 'B');
+		this[`team${winner}ScorePile`].push(...this.pile);
 		this.pile = [];
 		return winner;
 	}
@@ -269,17 +325,22 @@ export class GameState {
 	}
 
 	isGameOver() {
-		return [...this.teamAScorePile, ...this.teamBScorePile].length === 40;
+		return [...this.teamAScorePile, ...this.teamBScorePile].length === 4;
+	}
+
+	getFinalScoreBoard() {
+		// todo
 	}
 
 	calcTeamScores() {
 		let score = 0;
-		this.teamAScorePile.forEach(card => { score += Math.floor(cardScoresMap.get(card.id)); });
+		this.teamAScorePile.forEach(card => { score += Math.floor(cardScoresMap.get(+card.id)); });
 		this.gameScore.teamA = score;
 
 		score = 0;
-		this.teamBScorePile.forEach(card => { score += Math.floor(cardScoresMap.get(card.id)); });
+		this.teamBScorePile.forEach(card => { score += Math.floor(cardScoresMap.get(+card.id)); });
 		this.gameScore.teamB = score;
+
 
 		this.updateContinousScores();
 	}
