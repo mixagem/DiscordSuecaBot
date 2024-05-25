@@ -1,7 +1,7 @@
 const devmode = true;
 
 export class GameConfig {
-	players; // GamePlayer[]
+	players;
 	dealer;
 	constructor() {
 		this.players = new Map();
@@ -155,17 +155,17 @@ export class GameState {
 	}
 
 	getPlayerNameByID(id) {
-		let name = '';
-		this.gameConfig.players.forEach((key, value) => {
-			if (value.id === id) { name = value.name; }
-		});
-		return name;
+		for (let i = 1; i <= this.gameConfig.players.size(); i++) {
+			if (this.gameConfig.players.get(`player${i}`).id === id) {
+				return this.gameConfig.players.get(`player${i}`).name;
+			}
+		}
 	}
 
 	getPlayerIndexByID(id) {
 
-		for (let i = 1; i <= this.gameConfig.players.length; i++) {
-			if (this.gameConfig.players[i - 1].id === id) {
+		for (let i = 1; i <= this.gameConfig.players.size(); i++) {
+			if (this.gameConfig.players.get(`player${i}`).id === id) {
 				return i;
 			}
 		}
@@ -338,11 +338,11 @@ export class GameState {
 		const firstPlayer = lastPlayer === 4 ? 1 : lastPlayer + 1;
 
 		let currentWinningCard = this.pile[0];
-		this.previousRound.winnerIndex = firstPlayer; // o vençedor começar com o primeiro jogador
+		this.previousRound.winnerIndex = firstPlayer;
 		for (let i = 1; i < 4; i++) {
 			const nextCard = structuredClone(this.pile[i]);
 			const newWinningCard = this.headToHeadCards(currentWinningCard, nextCard);
-			if (this.areTheCardsTheSame(nextCard, newWinningCard)) {
+			if (this.areTheseCardsTheSame(nextCard, newWinningCard)) {
 				currentWinningCard = structuredClone(nextCard);
 				this.previousRound.winnerIndex = (firstPlayer + i > 4 ? firstPlayer + i - 4 : firstPlayer + i);
 			}
@@ -353,7 +353,7 @@ export class GameState {
 		this.currentPlayer = this.previousRound.winnerIndex;
 	}
 
-	areTheCardsTheSame(card1, card2) {
+	areTheseCardsTheSame(card1, card2) {
 		return +card1.id === +card2.id && card1.guild === card2.guild;
 	}
 

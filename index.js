@@ -1,10 +1,11 @@
-import { Client, GatewayIntentBits, Events, Partials, ButtonBuilder, ActionRowBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, Collection } from 'discord.js';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource } from '@discordjs/voice';
-import { GameConfig, GamePlayer, Cards, Guilds, InitFormAutocompletes, InitFormButtons, WhisperButtons, GameState, GameOverEmbedActions, RenunciaActions } from './classes.js';
-import { createRequire } from 'module';
-import url from 'url';
+import { Client, GatewayIntentBits, Events, Partials, ButtonBuilder, ActionRowBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, Collection } from 'discord.js';
 
-// stuff for command deploy
+import url from 'url';
+import { createRequire } from 'module';
+import { GameConfig, GamePlayer, Cards, Guilds, InitFormAutocompletes, InitFormButtons, WhisperButtons, GameState, GameOverEmbedActions, RenunciaActions } from './classes.js';
+
+// stuff for commands deploy
 const require = createRequire(import.meta.url);
 const fs = require('node:fs');
 const path = require('node:path');
@@ -40,7 +41,6 @@ const CLIENT = new Client({
 		Partials.Channel],
 });
 
-
 // commands
 CLIENT.commands = new Collection();
 const foldersPath = path.join(__dirname, 'commands');
@@ -72,17 +72,18 @@ CLIENT.login(TOKEN);
 
 
 function onLogin() {
-	console.log(`Ready to GO! _ ${CLIENT.user.tag}!`);
 	GUILD = CLIENT.guilds.cache.get(GUILDID);
 	VOICECHANNEL = GUILD.channels.cache.find(channel => channel.id === (devmode ? '494983477351940096' : VOICECHANNELID));
 	TEXTCHANNEL = GUILD.channels.cache.find(channel => channel.id === TEXTCHANNELID);
+
+	console.log(`Ready to GO! _ ${CLIENT.user.tag}!`);
 }
 
 async function interactionInit(interaction) {
 	// /sueca command
 	if (interaction.isChatInputCommand() && interaction.channelId === TEXTCHANNELID && interaction.commandName === 'sueca') {
 		const command = interaction.client.commands.get(interaction.commandName);
-		await command.execute(interaction).then(_ => { setTimeout(() => { botTriggered(interaction); }, 1000); });
+		await command.execute(interaction).then(_ => { setTimeout(() => { botTriggered(interaction); }, (devmode ? 0 : 3000)); });
 	}
 
 	// autocompletes
@@ -105,22 +106,24 @@ async function interactionInit(interaction) {
 	// buttons
 	if (interaction.isButton()) {
 
-		// init form buttons
+		// init form
 		if (Object.values(InitFormButtons).includes(interaction.customId)) {
 			initButtonClick(interaction);
 		}
 
-		// whisper button
+		// whisper
 		switch (interaction.customId) {
 			case WhisperButtons.CARDPLAYED:
 				cardPlayed(interaction);
 				break;
 		}
 
+		// gameover form
 		if (Object.values(GameOverEmbedActions).includes(interaction.customId)) {
 			gameOverButtonClick(interaction);
 		}
 
+		// renuncia
 		if (Object.values(RenunciaActions).includes(interaction.customId)) {
 			renunciaButtonClick(interaction);
 		}
@@ -191,6 +194,7 @@ function renunciaButtonClick(interaction) {
 			break;
 	}
 }
+
 function botTriggered(interaction) {
 	areThereEnoughPlayers() ? gameIntroduction(interaction) : notEnoughPlayers(interaction);
 }
@@ -199,7 +203,6 @@ function areThereEnoughPlayers() {
 	if (devmode) { return true; }
 	return VOICECHANNEL.members.size >= 4;
 }
-
 
 function notEnoughPlayers(interaction) {
 	interaction.editReply({ content: 'not enuff players' });
@@ -264,7 +267,7 @@ function getGameStartForm(page) {
 		const buttonsRow = new ActionRowBuilder().addComponents(cancel, previous, start);
 
 		return {
-			content: '**Escolhe quem baralha o beat**',
+			content: '**🃏 Definam aí quem baralha o beat, e de onde vem o trunfo.**',
 			components: [dealerRow, trunfoRow, buttonsRow],
 		};
 	}
@@ -272,8 +275,10 @@ function getGameStartForm(page) {
 
 
 function cancelGameCreation(interaction) {
+	if (devmode) { console.log('cancelGameCreation'); }
 	interaction.message.delete();
 	gameConfig = null;
+	gameState = null;
 	botVoiceGoodbye();
 }
 
@@ -287,8 +292,8 @@ function isGameConfigValid() {
 	if (devmode) { return true; }
 	if (!gameConfig.dealer || !gameConfig.trunfo) { return false; }
 	for (let i = 1; i <= 4; i++) {
-		if (!gameConfig.players.get(`player${i}`).id || !gameConfig.players.get(`player${i}`).name) { return false; }
-		if (i > 1 && (gameConfig.players.get(`player${i}`).id === gameConfig.players.get(`player${i - 1}`).id)) { return false; }
+		if (!gameConfig.players.get(`player${i}`).id || !gameConfig.players.get(`player${i}`).name) { return false; } // all 4 players required
+		if (i > 1 && (gameConfig.players.get(`player${i}`).id === gameConfig.players.get(`player${i - 1}`).id)) { return false; } // no duplicated players
 	}
 	return true;
 }
@@ -307,39 +312,48 @@ function gameStart(interaction) {
 			break;
 		}
 	}
-	getShuffelingMessage(interaction, dealerIndex);
+	gotoShuffeling(interaction, dealerIndex);
 }
 
 
-function getShuffelingMessage(interaction, dealerIndex) {
+function gotoShuffeling(interaction, dealerIndex) {
 	interaction.update({ content: `O **${gameConfig.players.get(`player${dealerIndex}`).name}** está a baralhar o mambo.`, components: [] });
 
 	setTimeout(() => {
-		getCuttingMessage(interaction, dealerIndex);
+		const playerIndex = (dealerIndex + 2 > 4 ? dealerIndex + 2 - 4 : dealerIndex + 2);
+		interaction.editReply({ content: `O **${gameConfig.players.get(`player${playerIndex}`).name}** está a cortar o beat.` });
 	}, (devmode ? 1000 : 5000));
-}
-
-function getCuttingMessage(interaction, dealerIndex) {
-	const playerIndex = (dealerIndex + 2 > 4 ? dealerIndex + 2 - 4 : dealerIndex + 2);
-	interaction.editReply({ content: `O **${gameConfig.players.get(`player${playerIndex}`).name}** está a cortar o beat.` });
 
 	setTimeout(() => {
-		getDrawingMessage(interaction, dealerIndex);
-	}, (devmode ? 1000 : 5000));
-}
-
-function getDrawingMessage(interaction, dealerIndex) {
-	const playerIndex = (dealerIndex + 3 > 4 ? dealerIndex + 3 - 4 : dealerIndex + 3);
-	interaction.editReply({ content: `O **${gameConfig.players.get(`player${playerIndex}`).name}** está a distribuir o brinde.` });
+		const playerIndex = (dealerIndex + 3 > 4 ? dealerIndex + 3 - 4 : dealerIndex + 3);
+		interaction.editReply({ content: `O **${gameConfig.players.get(`player${playerIndex}`).name}** está a distribuir o brinde.` });
+	}, (devmode ? 2000 : 10000));
 
 	setTimeout(() => {
 		gameDraw(interaction, dealerIndex);
-	}, (devmode ? 1000 : 5000));
-
+	}, (devmode ? 3000 : 15000));
 }
 
+// function gotoCutting(interaction, dealerIndex) {
+// 	const playerIndex = (dealerIndex + 2 > 4 ? dealerIndex + 2 - 4 : dealerIndex + 2);
+// 	interaction.editReply({ content: `O **${gameConfig.players.get(`player${playerIndex}`).name}** está a cortar o beat.` });
+
+// 	setTimeout(() => {
+// 		gotoDrawing(interaction, dealerIndex);
+// 	}, (devmode ? 2000 : 10000));
+// }
+
+// function gotoDrawing(interaction, dealerIndex) {
+// 	const playerIndex = (dealerIndex + 3 > 4 ? dealerIndex + 3 - 4 : dealerIndex + 3);
+// 	interaction.editReply({ content: `O **${gameConfig.players.get(`player${playerIndex}`).name}** está a distribuir o brinde.` });
+
+// 	setTimeout(() => {
+// 		gameDraw(interaction, dealerIndex);
+// 	}, (devmode ? 3000 : 15000));
+
+// }
+
 function gameDraw(interaction, dealerIndex) {
-	if (devmode) { console.log('gameDraw'); }
 	if (!gameState) { gameState = new GameState(); }
 	gameState.currentPlayer = dealerIndex;
 	gameState.interaction = interaction;
@@ -361,7 +375,7 @@ function timeToPlay() {
 
 	let content = whosTurnContent + ' ' + trunfoContent;
 	if (!!gameState.pile.length) {
-		const previouslyTurnContent = `O ${gameConfig.players.get(`player${gameState.currentPlayer - 1 === 0 ? 4 : gameState.currentPlayer - 1}`).name}** jogou ${gameState.getPileText([gameState.pile.at(-1)])}`;
+		const previouslyTurnContent = `O **${gameConfig.players.get(`player${gameState.currentPlayer - 1 === 0 ? 4 : gameState.currentPlayer - 1}`).name}** jogou ${gameState.getPileText([gameState.pile.at(-1)])}`;
 		content = previouslyTurnContent + '\n' + content;
 		content += '\n' + pileContent;
 	}
@@ -454,8 +468,8 @@ function roundEnded() {
 function gameEnded() {
 	if (devmode) { console.log('gameEnded'); }
 
-	let content = `A equipa ${gameState.previousRound.winningTeam} varreu a ronda anterior, levaram ${gameState.previousRound.score} pontos para o cubico. ` + gameState.getPileText(gameState.previousRound.pile);
-	content += '**Jogo feito, nada mais.** A calcular o resultado final, sigurem-se...';
+	let content = `A equipa ${gameState.previousRound.winningTeam} varreu a última ronda, levaram ${gameState.previousRound.score} pontos para o cubico. ` + gameState.getPileText(gameState.previousRound.pile);
+	content += '\n\n**Jogo feito, nada mais.** A calcular o resultado final, sigurem-se...';
 
 	gameState.interaction.editReply({ content: content });
 	botVoiceGameEnd();
@@ -463,19 +477,19 @@ function gameEnded() {
 
 	setTimeout(() => {
 		!!gameState.renunciaTrigger ? renunciaEndScreen(gameState.renunciaTrigger) : gameEndedScoreboard();
-	}, (devmode ? 1000 : 15000));
+	}, (devmode ? 1000 : 10000));
 }
 
 function gameEndedScoreboard() {
-
-	const close = new ButtonBuilder().setCustomId(GameOverEmbedActions.END).setLabel('🚫 Encerrar mesa').setStyle(ButtonStyle.Danger);
+	if (devmode) { console.log('gameEndedScoreboard'); }
+	const close = new ButtonBuilder().setCustomId(GameOverEmbedActions.END).setLabel('🚫 Fechar mesa').setStyle(ButtonStyle.Danger);
 	const next = new ButtonBuilder().setCustomId(GameOverEmbedActions.MORE).setLabel('🃏 Novo jogo').setStyle(ButtonStyle.Success);
 	const reset = new ButtonBuilder().setCustomId(GameOverEmbedActions.RESET).setLabel('🧽 Resetar resultados').setStyle(ButtonStyle.Success);
 	const buttonsRow = new ActionRowBuilder().addComponents(close, next, reset);
 
 	let content = (gameState.gameScore.teamA === gameState.gameScore.teamB)
 		? 'Aquele empatezinho técnico, quem nunca! 🤝'
-		: `E o vencedor dessa porra foi a **Equipa ${gameState.gameScore.teamA > gameState.gameScore.teamB ? 'A' : 'B'}**. Parabéns seus animais. ${gameState.checkForCapote() ? '**Capote** nessa porra, o rabinho deles não aguenta! 💩💩' : ''}`;
+		: `E o vencedor dessa porra foi a **Equipa ${gameState.gameScore.teamA > gameState.gameScore.teamB ? 'A' : 'B'}**. Parabéns seus animais.${gameState.checkForCapote() ? ' **Capote** nessa porra, o rabinho deles não aguenta! 💩💩' : ''}`;
 
 	content += `\nResultado do jogo: **Equipa A** [${gameState.gameScore.teamA}] - [${gameState.gameScore.teamB}] **Equipa B**`;
 	content += `\nResultado acomulado: **Equipa A** [${gameState.continuousScore.teamA}] - [${gameState.continuousScore.teamB}] **Equipa B**`;
@@ -498,6 +512,7 @@ function getRenunciaForm() {
 }
 
 function renunciaEndScreen(acuserID) {
+	if (devmode) { console.log('renunciaEndScreen'); }
 	const acuserName = gameState.getPlayerNameByID(acuserID);
 	const offenderID = gameState.renunciasMap.get(acuserID);
 	const offenderName = gameState.getPlayerNameByID(offenderID);
