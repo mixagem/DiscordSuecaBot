@@ -199,7 +199,33 @@ export class GameState {
 		}
 
 		if (!this.isHandValid()) { this.shuffleNewDeck(); }
+
+		this.sortHands();
 	}
+
+	// perbonal best, 4 nested 🌐
+	sortHands() {
+		for (let i = 1; i <= 4; i++) {
+			const sortedHand = [];
+			Object.values(Guilds).forEach(guild => {
+				let guildCards = [];
+				this[`player${i}Hand`].forEach(card => {
+					if (card.guild === guild) {
+						let newIndex = 0;
+						guildCards.forEach(guildCard => {
+							if (CardScores.get(+guildCard.id) < CardScores.get(+card.id)) {
+								newIndex++;
+							}
+						});
+						guildCards = [...guildCards.slice(0, newIndex), card, ...guildCards.slice(newIndex)];
+					}
+				});
+				sortedHand.push(...guildCards);
+			});
+			this[`player${i}Hand`] = structuredClone(sortedHand);
+		}
+	}
+
 
 	isHandValid() {
 		for (let i = 1; i <= 4; i++) {

@@ -14,7 +14,7 @@ const __dirname = path.dirname(__filename);
 
 // devmode
 export const devmode = true;
-export const devmode2 = true; // numero de players no aarray da renuncia hardcoded
+export const devmode2 = false; // numero de players no aarray da renuncia hardcoded
 export const devModeVOICHANNELID = '494983477351940096'; // não esquecer de alterar para o canal de voice ond estamos
 
 // secrets
