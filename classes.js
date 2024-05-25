@@ -1,4 +1,4 @@
-const devmode = true;
+const devmode = false;
 
 export class GameConfig {
 	players;
@@ -138,6 +138,7 @@ export class GameState {
 	previousRound;
 	renunciasMap;
 	renunciaTrigger;
+	renunciaRound;
 
 	constructor() {
 		this.shuffleNewDeck();
@@ -163,6 +164,7 @@ export class GameState {
 		this.previousRound = null;
 		this.renunciasMap = new Map();
 		this.renunciaTrigger = '';
+		this.renunciaRound = 0;
 
 		Object.values(Guilds).forEach(guild => {
 			Object.values(Cards).forEach(id => {
@@ -381,14 +383,14 @@ export class GameState {
 		return string;
 	}
 
-	// 💎 renuncia support - v2
 	triggerRenuncia(userid) { this.renunciaTrigger = userid; }
 
-	isPlayerRenunciaCorrect(userid) {
+	isPlayerRenunciaCorrect(acuserID) {
 		if (!this.renunciasLog.length) { return false; }
-		const id = this.renunciasMap.get(userid);
+		const offenderID = this.renunciasMap.get(acuserID);
 		for (const renuncia of this.renunciasLog) {
-			if (renuncia.offenderID === id) {
+			if (renuncia.offenderID === offenderID) {
+				this.renunciaRound = renuncia.round;
 				return true;
 			}
 		}
