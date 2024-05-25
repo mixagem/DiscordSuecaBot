@@ -14,7 +14,8 @@ const __dirname = path.dirname(__filename);
 
 // devmode
 export const devmode = true;
-export const devmode2 = false;
+export const devmode2 = false; // numero de players no aarray da renuncia hardcoded
+export const devModeVOICHANNELID = '943180993244844053'; // não esquecer de alterar para o canal de voice ond estamos
 
 // secrets
 const { TOKEN, GUILDID, TEXTCHANNELID, VOICECHANNELID, CLIENTID } = require('./config.json');
@@ -74,14 +75,21 @@ CLIENT.login(TOKEN);
 
 function onLogin() {
 	GUILD = CLIENT.guilds.cache.get(GUILDID);
-	VOICECHANNEL = GUILD.channels.cache.find(channel => channel.id === (devmode ? '510206902135685133' : VOICECHANNELID));
+	VOICECHANNEL = GUILD.channels.cache.find(channel => channel.id === (devmode ? devModeVOICHANNELID : VOICECHANNELID));
 
 	console.log(`Ready to GO! _ ${CLIENT.user.tag}!`);
 }
 
 async function interactionInit(interaction) {
-	// /sueca command
-	if (interaction.isChatInputCommand() && interaction.channelId === TEXTCHANNELID && interaction.commandName === 'sueca') {
+	// commands
+	if (interaction.isChatInputCommand()) {
+
+		// ignoring everything but /sueca commands from sueda text channel
+		if (interaction.channelId !== TEXTCHANNELID || interaction.commandName !== 'sueca') { return; }
+
+		// if a gametable is already open, ignore the command
+		if (!!gameConfig) { return; }
+
 		const command = interaction.client.commands.get(interaction.commandName);
 		await command.execute(interaction).then(_ => { setTimeout(() => { botTriggered(interaction); }, ((devmode && !devmode2) ? 1000 : 3000)); });
 	}
@@ -150,7 +158,7 @@ function areThereEnoughPlayers() {
 }
 
 function notEnoughPlayers(interaction) {
-	interaction.editReply({ content: 'Para jogar a sueca são precisos 4. Arranca contigo sócio.' });
+	interaction.editReply({ content: '⛔ Pra à Sueca são precisos 4. **Arranca contigo sócio.** ⛔' });
 	setTimeout(() => { interaction.deleteReply(); }, 3000);
 }
 
@@ -212,7 +220,7 @@ function isGameConfigValid() {
 }
 
 function gameConfigInvalid(interaction) {
-	interaction.update({ content: '**Ou faltam jogadores, ou existem jogadores repetidos. Não te esqueças também de escolher o dealer e a origem trunfo!**' });
+	interaction.update({ content: '**⛔ Ou faltam jogadores, ou existem jogadores repetidos. Não te esqueças também de escolher o dealer e a origem trunfo!** ⛔' });
 }
 
 function gameStart(interaction) {
@@ -228,16 +236,16 @@ function gameStart(interaction) {
 }
 
 function gotoShuffeling(interaction, dealerIndex) {
-	interaction.update({ content: `O **${gameConfig.players.get(`player${dealerIndex}`).name}** está a baralhar o mambo.`, components: [] });
+	interaction.update({ content: `💫 O **${gameConfig.players.get(`player${dealerIndex}`).name}** está a baralhar o mambo. `, components: [] });
 
 	setTimeout(() => {
 		const playerIndex = (dealerIndex + 2 > 4 ? dealerIndex + 2 - 4 : dealerIndex + 2);
-		interaction.editReply({ content: `O **${gameConfig.players.get(`player${playerIndex}`).name}** está a cortar o beat.` });
+		interaction.editReply({ content: `🔪 O **${gameConfig.players.get(`player${playerIndex}`).name}** está a cortar o beat. ` });
 	}, ((devmode && !devmode2) ? 1000 : 5000));
 
 	setTimeout(() => {
 		const playerIndex = (dealerIndex + 3 > 4 ? dealerIndex + 3 - 4 : dealerIndex + 3);
-		interaction.editReply({ content: `O **${gameConfig.players.get(`player${playerIndex}`).name}** está a distribuir o brinde.` });
+		interaction.editReply({ content: `📦 O **${gameConfig.players.get(`player${playerIndex}`).name}** está a distribuir o brinde. ` });
 	}, ((devmode && !devmode2) ? 2000 : 10000));
 
 	setTimeout(() => { gameDraw(interaction, dealerIndex); }, ((devmode && !devmode2) ? 3000 : 15000));
@@ -255,27 +263,27 @@ function gameDraw(interaction, dealerIndex) {
 
 function timeToPlay() {
 
-	const whosTurnContent = `Está na vez do **${gameConfig.players.get(`player${gameState.currentPlayer}`).name}** jogar.`;
-	const trunfoContent = `O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.`;
-	const pileContent = `Na mesa temos: ${gameState.getPileText()}`;
+	const whosTurnContent = `🤠 Está na vez do **${gameConfig.players.get(`player${gameState.currentPlayer}`).name}** jogar.`;
+	const trunfoContent = `👑 O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.`;
+	const pileContent = `🃏 Na mesa temos: ${gameState.getPileText()}`;
 
-	const renunciaButton = [new ButtonBuilder().setCustomId(RenunciaActions.TRIGGER).setLabel('🛂 Renuncia!!').setStyle(ButtonStyle.Danger)];
+	const renunciaButton = [new ButtonBuilder().setCustomId(RenunciaActions.TRIGGER).setLabel('🛂 Renúncia!!').setStyle(ButtonStyle.Danger)];
 	const buttonsRow = [];
 
 	let content = whosTurnContent + ' ' + trunfoContent;
 	if (!!gameState.pile.length) {
-		const previouslyTurnContent = `O **${gameConfig.players.get(`player${gameState.currentPlayer - 1 === 0 ? 4 : gameState.currentPlayer - 1}`).name}** jogou ${gameState.getPileText([gameState.pile.at(-1)])}`;
+		const previouslyTurnContent = `🔄 Na jogada anterior, o **${gameConfig.players.get(`player${gameState.currentPlayer - 1 === 0 ? 4 : gameState.currentPlayer - 1}`).name}** lançou ${gameState.getPileText([gameState.pile.at(-1)])}`;
 		content = previouslyTurnContent + '\n' + content;
 		content += '\n' + pileContent;
 	}
-	if (!!gameState.previousRound) { content += '\n' + `A equipa ${gameState.previousRound.winningTeam} varreu a ronda anterior, levaram ${gameState.previousRound.score} pontos para o cubico. ` + gameState.getPileText(gameState.previousRound.pile); }
+	if (!!gameState.previousRound) { content += '\n' + `🧹 A equipa ${gameState.previousRound.winningTeam} varreu a ronda anterior, levaram ${gameState.previousRound.score} pontos para o cubico. ` + gameState.getPileText(gameState.previousRound.pile); }
 	if (!!gameState.pile.length || !!gameState.previousRound) { buttonsRow.push(new ActionRowBuilder().addComponents(renunciaButton)); };
 
 	gameState.interaction.editReply({ content: content, components: buttonsRow });
-	whipserTimeToPlay();
+	whisperTimeToPlay();
 }
 
-function whipserTimeToPlay() {
+function whisperTimeToPlay() {
 	const userIDtoDM = gameConfig.players.get(`player${gameState.currentPlayer}`).id;
 
 	CLIENT.users.fetch(userIDtoDM).then(user => {
@@ -289,6 +297,7 @@ function cardSelected(interaction) {
 }
 
 function cardPlayed(interaction) {
+	if (!gameState.tempCard) { interaction.update({ content: '**⛔ Não escolheste uma carta para jogar!!** ⛔' + '\n' + interaction.message.content }); return; }
 	interaction.message.delete();
 	if (!!gameState.renunciaTrigger) { renunciaEndScreen(gameState.renunciaTrigger); return; }
 	gameState.nextMove();
@@ -301,8 +310,8 @@ function roundEnded() {
 }
 
 function gameEnded() {
-	let content = `A equipa ${gameState.previousRound.winningTeam} varreu a última ronda, levaram ${gameState.previousRound.score} pontos para o cubico. ` + gameState.getPileText(gameState.previousRound.pile);
-	content += '\n\n**Jogo feito, nada mais.** A calcular o resultado final, sigurem-se...';
+	let content = `🧹 A equipa ${gameState.previousRound.winningTeam} varreu a última ronda, levaram ${gameState.previousRound.score} pontos para o cubico. ` + gameState.getPileText(gameState.previousRound.pile);
+	content += '\n\n📣 **Jogo feito, nada mais.** A calcular o resultado final, sigurem-se... 📣';
 
 	gameState.interaction.editReply({ content: content });
 	gameState.calcTeamScores();
@@ -322,11 +331,11 @@ function gameEndedScoreboard() {
 	const buttonsRow = new ActionRowBuilder().addComponents(close, reset, next);
 
 	let content = gameState.gameScore.teamA === gameState.gameScore.teamB
-		? 'Aquele empatezinho técnico, quem nunca! 🤝'
-		: `E o vencedor dessa porra foi a **Equipa ${gameState.gameScore.teamA > gameState.gameScore.teamB ? 'A' : 'B'}**. Parabéns seus animais.${gameState.checkForCapote() ? ' **Capote** nessa porra, o rabinho deles não aguenta! 💩💩' : ''}`;
+		? '🤝 Aquele empatezinho técnico, quem nunca! 🤝'
+		: `🎊 E o vencedor dessa porra foi a **Equipa ${gameState.gameScore.teamA > gameState.gameScore.teamB ? 'A' : 'B'}**. Parabéns seus animais. 🎊${gameState.checkForCapote() ? ' 🔫 **Capote** nessa porra, o rabinho deles não aguenta! 💩' : ''}`;
 
-	content += `\nResultado do jogo: **Equipa A** [${gameState.gameScore.teamA}] - [${gameState.gameScore.teamB}] **Equipa B**`;
-	content += `\nResultado acomulado: **Equipa A** [${gameState.continuousScore.teamA}] - [${gameState.continuousScore.teamB}] **Equipa B**`;
+	content += `\n🔷 Resultado do jogo: **Equipa A** [${gameState.gameScore.teamA}] - [${gameState.gameScore.teamB}] **Equipa B** 🔷`;
+	content += `\n🔶 Resultado acomulado: **Equipa A** [${gameState.continuousScore.teamA}] - [${gameState.continuousScore.teamB}] **Equipa B** 🔶`;
 
 	const initFormPage2 = getGameStartForm(1);
 	initFormPage2.components.pop(); // we dont want the buttonsRow
@@ -343,7 +352,12 @@ function gameOverButtonClick(interaction) {
 			break;
 		case GameOverEmbedActions.RESET:
 			gameState.resetContinousScores();
-			interaction.deferUpdate();
+			// interaction.deferUpdate();
+			let content = interaction.message.content;
+			const regex = /\[[0-9]+\]/g;
+			content = content.replaceAll(regex, '[0]');
+			content = '**🧽 Os resultados acomulados foram limpos!! 🧽**' + '\n\n' + content;
+			interaction.update({ content: content });
 			break;
 	}
 }
@@ -393,7 +407,7 @@ function getGameStartForm(page) {
 		const buttonsRow = new ActionRowBuilder().addComponents(cancel, previous, start);
 
 		return {
-			content: '**🃏 Definam aí quem baralha o beat, e de onde vem o trunfo.**',
+			content: '**🃏 Definam quem vai baralhar o beat, e de onde vem o trunfo.**',
 			components: [dealerRow, trunfoRow, buttonsRow],
 		};
 	}
@@ -431,7 +445,7 @@ function getCardPlayForm() {
 	const notFirstPlayerContent = 'Na mesa estão as seguintes cartas: ' + gameState.getPileText();
 
 	return {
-		content: `**Escolhe a carta que queres jogar. O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.** - ` + (!!gameState.pile.length ? notFirstPlayerContent : firstPlayerContent) + ((devmode && !devmode2) ? ` Este é o player numero ${gameState.currentPlayer}` : ''),
+		content: `**🃏 Escolhe a carta que queres jogar. O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.** - ` + (!!gameState.pile.length ? notFirstPlayerContent : firstPlayerContent) + ((devmode && !devmode2) ? ` Este é o player numero ${gameState.currentPlayer}` : ''),
 		components: [playerHandRow, buttonsRow],
 	};
 }
@@ -454,7 +468,7 @@ function getRenunciaForm() {
 
 	const buttonsRow = new ActionRowBuilder().addComponents(cancel, denounce);
 
-	return { content: '**Identifica o intruja que achas que fez renuncia 🕵️‍♂️**', components: [renunciaRow, buttonsRow] };
+	return { content: '**🕵️‍♂️ Identifica o intruja que achas que fez renúncia**', components: [renunciaRow, buttonsRow] };
 }
 
 function renunciaEndScreen(acuserID) {
@@ -467,18 +481,17 @@ function renunciaEndScreen(acuserID) {
 	let winner = !(offenderIndex % 2) ? 'teamA' : 'teamB';
 	let loser = !!(offenderIndex % 2) ? 'teamA' : 'teamB';
 
-	let content = `**ALERTA CM:** O jogador ${acuserName} acusou o jogador ${offenderName} de renúncia!! 😱😱`;
+	let content = `📞📺 **ALERTA CM:** O jogador ${acuserName} acusou o jogador ${offenderName} de renúncia!! 😱😱`;
 	gameState.interaction.editReply({ content: content, components: [] });
 
 	if (gameState.isPlayerRenunciaCorrect(acuserID)) {
-		content = `**E ele estava certo!** O ${offenderName} quebrou as regras na ronda ${gameState.renunciaRound}, e á pala dessa brincadeira, a Equipa ${loser.at(-1)} levou capote neste jogo!\n`;
+		content = `✅✅✅ **E ele estava certo!** O ${offenderName} quebrou as regras na ronda ${gameState.renunciaRound}, e á pala dessa brincadeira, a Equipa ${loser.at(-1)} levou capote neste jogo! 💩`;
 	}
 	else {
 		// assumption failed, switcherooo
 		winner = !!(offenderIndex % 2) ? 'teamA' : 'teamB';
 		loser = !(offenderIndex % 2) ? 'teamA' : 'teamB';
-
-		content = `**E ele estava errado! O ${offenderName} não quebrou as regras neste jogo! Para não dares para esperto, a Equipa ${loser.at(-1)} vai levar um capotinho cambuá nesse jogo.**`;
+		content = `❌❌❌ **Mas ele estava errado! O ${offenderName} não quebrou as regras neste jogo! Para não dares para esperto, a Equipa ${loser.at(-1)} vai levar um capotinho cambuá nesse jogo.** 💩`;
 	}
 
 	gameState.gameScore[winner] = 120;
@@ -496,6 +509,9 @@ function renunciaButtonClick(interaction) {
 			CLIENT.users.fetch(interaction.user.id).then(user => { user.send(getRenunciaForm()); });
 			break;
 		case RenunciaActions.CONFIRM:
+			if (!gameState.renunciasMap.has(interaction.user.id)) {
+				interaction.update({ content: '**⛔ Não escolheste um joogador para denunciar!! ⛔**' + '\n' + interaction.message.content }); return;
+			}
 			gameState.triggerRenuncia(interaction.user.id);
 			interaction.message.delete();
 			break;
@@ -506,7 +522,6 @@ function renunciaButtonClick(interaction) {
 	}
 }
 
-// 💎 bot voice v2
 function botVoiceGameEnd() {
 	bgmMusicLoop = false;
 	const src = createAudioResource('./audio/gameover.mp3');
@@ -535,7 +550,6 @@ function botVoiceIntroduction() {
 	});
 }
 
-
 async function getVoiceChannelConfig() {
 	return joinVoiceChannel({
 		channelId: VOICECHANNEL.id,
@@ -544,6 +558,4 @@ async function getVoiceChannelConfig() {
 	});
 };
 
-// v1 hotfix - prevenir user de jogar uma carta vazia. prevenir user no final do jogo de preencher formulario vazio
-// v1.5 - mensagem a dizer que os resultados foram resetados com sucesso
 // v3 - 30secs to autoplay; 3 autoplays dá capote (anti-afk).

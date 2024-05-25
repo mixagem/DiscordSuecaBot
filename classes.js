@@ -1,4 +1,5 @@
-const devmode = false;
+const devMini = false;
+const devShort = false;
 
 export class GameConfig {
 	players;
@@ -48,20 +49,22 @@ export const Guilds = {
 	'COPAS': 'hearts',
 };
 
-export const Cards = devmode
+export const Cards = devMini
 	? { 'ÁS': 1, 'MANILHA': 7 }
-	: {
-		'ÁS': 1,
-		'DOIS': 2,
-		'TRÊS': 3,
-		'QUATRO': 4,
-		'CINCO': 5,
-		'SEIS': 6,
-		'MANILHA': 7,
-		'VALETE': 11,
-		'DAMA': 12,
-		'REI': 13,
-	};
+	: devShort
+		? { 'ÁS': 1, 'MANILHA': 7, 'VALETE': 11, 'REI': 13 }
+		: {
+			'ÁS': 1,
+			'DOIS': 2,
+			'TRÊS': 3,
+			'QUATRO': 4,
+			'CINCO': 5,
+			'SEIS': 6,
+			'MANILHA': 7,
+			'VALETE': 11,
+			'DAMA': 12,
+			'REI': 13,
+		};
 
 export const Teams = {
 	'A': 'A',
@@ -103,14 +106,16 @@ export const RenunciaActions = {
 };
 
 export const CardScores = new Map();
-if (!devmode) {
+if (!devMini && !devShort) {
 	CardScores.set(Cards.DOIS, 0.2);
 	CardScores.set(Cards.TRÊS, 0.3);
 	CardScores.set(Cards.QUATRO, 0.4);
 	CardScores.set(Cards.CINCO, 0.5);
 	CardScores.set(Cards.SEIS, 0.6);
-	CardScores.set(Cards.VALETE, 2);
-	CardScores.set(Cards.DAMA, 3);
+	CardScores.set(Cards.DAMA, 2);
+}
+if ((devShort && !devMini) || (!devMini && !devShort)) {
+	CardScores.set(Cards.VALETE, 3);
 	CardScores.set(Cards.REI, 4);
 }
 CardScores.set(Cards.MANILHA, 10);
@@ -310,7 +315,7 @@ export class GameState {
 
 	areTheseCardsTheSame(card1, card2) { return +card1.id === +card2.id && card1.guild === card2.guild; }
 
-	isGameOver() { return [...this.teamAScorePile, ...this.teamBScorePile].length === (devmode ? 8 : 40); }
+	isGameOver() { return [...this.teamAScorePile, ...this.teamBScorePile].length === (devMini ? 8 : devShort ? 16 : 40); }
 
 	calcTeamScores() {
 		let score = 0;
