@@ -1,19 +1,32 @@
 import { Client, GatewayIntentBits, Events, Partials, ButtonBuilder, ActionRowBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, Collection } from 'discord.js';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource } from '@discordjs/voice';
-import { GameConfig, GamePlayer, Cards, Guilds, InitFormAutocompletes, InitFormButtons, WhisperButtons, GameState, GameOverEmbedActions } from './classes.js';
+import { GameConfig, GamePlayer, Cards, Guilds, InitFormAutocompletes, InitFormButtons, WhisperButtons, GameState, GameOverEmbedActions, RenunciaActions } from './classes.js';
 import { createRequire } from 'module';
 import url from 'url';
 
+// stuff for command deploy
 const require = createRequire(import.meta.url);
 const fs = require('node:fs');
 const path = require('node:path');
 const __filename = url.fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const { TOKEN, GUILDID, TEXTCHANNELID, VOICECHANNELID } = require('./config.json');
-
+// devmode
 export const devmode = true;
 
+// secrets
+const { TOKEN, GUILDID, TEXTCHANNELID, VOICECHANNELID } = require('./config.json');
+
+// server and channel info
+let GUILD = null;
+let VOICECHANNEL = null;
+let TEXTCHANNEL = null;
+
+// game state
+let gameConfig = null;
+let gameState = null;
+
+// client
 const CLIENT = new Client({
 	intents: [
 		GatewayIntentBits.Guilds,
@@ -28,20 +41,8 @@ const CLIENT = new Client({
 });
 
 
-let GUILD = null;
-let VOICECHANNEL = null;
-let TEXTCHANNEL = null;
-
-let gameConfig = null;
-let gameState = null;
-
-/**  press play ****/
-CLIENT.once(Events.ClientReady, () => { loggedIn(); });
-CLIENT.on(Events.Error, console.error);
-CLIENT.on(Events.InteractionCreate, interactionInit);
-
+// commands
 CLIENT.commands = new Collection();
-
 const foldersPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(foldersPath);
 
@@ -61,14 +62,19 @@ for (const folder of commandFolders) {
 	}
 }
 
+// listeners
+CLIENT.on(Events.Error, console.error);
+CLIENT.on(Events.InteractionCreate, interactionInit);
 
+// login
+CLIENT.once(Events.ClientReady, () => { onLogin(); });
 CLIENT.login(TOKEN);
 
 
-function loggedIn() {
+function onLogin() {
 	console.log(`Ready to GO! _ ${CLIENT.user.tag}!`);
 	GUILD = CLIENT.guilds.cache.get(GUILDID);
-	VOICECHANNEL = GUILD.channels.cache.find(channel => channel.id === (devmode ? '437050707972063232' : VOICECHANNELID));
+	VOICECHANNEL = GUILD.channels.cache.find(channel => channel.id === (devmode ? '494983477351940096' : VOICECHANNELID));
 	TEXTCHANNEL = GUILD.channels.cache.find(channel => channel.id === TEXTCHANNELID);
 }
 
@@ -111,9 +117,13 @@ async function interactionInit(interaction) {
 				break;
 		}
 
-		// 💛 v1 -> Ações pós jogo para continuar jogo
-		// 💛 v1 -> Ações para renuncia
+		if (Object.values(GameOverEmbedActions).includes(interaction.customId)) {
+			gameOverButtonClick(interaction);
+		}
 
+		if (Object.values(RenunciaActions).includes(interaction.customId)) {
+			renunciaButtonClick(interaction);
+		}
 	}
 }
 
@@ -146,10 +156,44 @@ function initButtonClick(interaction) {
 
 }
 
+function gameOverButtonClick(interaction) {
+	switch (interaction.customId) {
+		case GameOverEmbedActions.END:
+			cancelGameCreation(interaction);
+			break;
+		case GameOverEmbedActions.MORE:
+			gameStart(interaction);
+			break;
+		case GameOverEmbedActions.RESET:
+			gameState.resetContinousScores();
+			interaction.deferReply();
+			break;
+	}
+}
+
+function renunciaButtonClick(interaction) {
+	switch (interaction.customId) {
+		case RenunciaActions.TRIGGER:
+			interaction.user.send(getRenunciaForm());
+			interaction.deferReply();
+			break;
+		case RenunciaActions.TARGET:
+			gameState.renunciasMap.set(interaction.user.id, interaction.values[0]);
+			interaction.deferReply();
+			break;
+		case RenunciaActions.CONFIRM:
+			gameState.triggerRenuncia(interaction.user.id);
+			interaction.message.delete();
+			break;
+		case RenunciaActions.CANCEL:
+			interaction.message.delete();
+			if (gameState.renunciasMap.has(interaction.user.id)) { gameState.renunciasMap.delete(interaction.user.id); }
+			break;
+	}
+}
 function botTriggered(interaction) {
 	areThereEnoughPlayers() ? gameIntroduction(interaction) : notEnoughPlayers(interaction);
 }
-
 
 function areThereEnoughPlayers() {
 	if (devmode) { return true; }
@@ -164,17 +208,11 @@ function notEnoughPlayers(interaction) {
 	}, 3000);
 }
 
-//
 function gameIntroduction(interaction) {
 	botVoiceIntroduction();
 	interaction.editReply(getGameStartForm(0));
 	gameConfig = new GameConfig();
 }
-
-function botVoiceIntroduction() {
-	// bot entra na sala e toca um clip inicial. 💛 v2
-}
-
 
 function getGameStartForm(page) {
 	const playersArray = [];
@@ -239,10 +277,6 @@ function cancelGameCreation(interaction) {
 	botVoiceGoodbye();
 }
 
-function botVoiceGoodbye() {
-	// toca um audio clip e sai do canal. 💛 v2
-}
-
 
 function usersAreReadyToGO(interaction) {
 	isGameConfigValid() ? gameStart(interaction) : gameConfigInvalid(interaction);
@@ -250,15 +284,17 @@ function usersAreReadyToGO(interaction) {
 
 
 function isGameConfigValid() {
+	if (devmode) { return true; }
 	if (!gameConfig.dealer || !gameConfig.trunfo) { return false; }
 	for (let i = 1; i <= 4; i++) {
 		if (!gameConfig.players.get(`player${i}`).id || !gameConfig.players.get(`player${i}`).name) { return false; }
+		if (i > 1 && (gameConfig.players.get(`player${i}`).id === gameConfig.players.get(`player${i - 1}`).id)) { return false; }
 	}
 	return true;
 }
 
 function gameConfigInvalid(interaction) {
-	interaction.update({ content: '**faltam mambos g**' });
+	interaction.update({ content: '**Ou faltam jogadores, ou existem jogadores repetidos. Não te esqueças de escolher o dealer eo trunfo!**' });
 }
 
 
@@ -274,40 +310,37 @@ function gameStart(interaction) {
 	getShuffelingMessage(interaction, dealerIndex);
 }
 
-function botVoiceGameStart() {
-	// form okay, lets go. dá uma musiquinha de leve tipo jazz. 💛 v2
-}
 
 function getShuffelingMessage(interaction, dealerIndex) {
 	interaction.update({ content: `O **${gameConfig.players.get(`player${dealerIndex}`).name}** está a baralhar o mambo.`, components: [] });
 
 	setTimeout(() => {
 		getCuttingMessage(interaction, dealerIndex);
-	}, (devmode ? 1000 : 3000));
+	}, (devmode ? 1000 : 5000));
 }
 
 function getCuttingMessage(interaction, dealerIndex) {
-	const playerIndex = (dealerIndex + 2 > 4 ? dealerIndex - 2 : dealerIndex + 2);
+	const playerIndex = (dealerIndex + 2 > 4 ? dealerIndex + 2 - 4 : dealerIndex + 2);
 	interaction.editReply({ content: `O **${gameConfig.players.get(`player${playerIndex}`).name}** está a cortar o beat.` });
 
 	setTimeout(() => {
 		getDrawingMessage(interaction, dealerIndex);
-	}, (devmode ? 1000 : 3000));
+	}, (devmode ? 1000 : 5000));
 }
 
 function getDrawingMessage(interaction, dealerIndex) {
-	const playerIndex = (dealerIndex + 3 > 4 ? dealerIndex - 1 : dealerIndex + 3);
+	const playerIndex = (dealerIndex + 3 > 4 ? dealerIndex + 3 - 4 : dealerIndex + 3);
 	interaction.editReply({ content: `O **${gameConfig.players.get(`player${playerIndex}`).name}** está a distribuir o brinde.` });
 
 	setTimeout(() => {
 		gameDraw(interaction, dealerIndex);
-	}, (devmode ? 1000 : 3000));
+	}, (devmode ? 1000 : 5000));
 
 }
 
 function gameDraw(interaction, dealerIndex) {
 	if (devmode) { console.log('gameDraw'); }
-	gameState = new GameState();
+	if (!gameState) { gameState = new GameState(); }
 	gameState.currentPlayer = dealerIndex;
 	gameState.interaction = interaction;
 	gameState.gameConfig = gameConfig;
@@ -323,7 +356,7 @@ function timeToPlay() {
 	const trunfoContent = `O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.`;
 	const pileContent = `Na mesa temos: ${gameState.getPileText()}`;
 
-	const renunciaButton = [new ButtonBuilder().setCustomId('renuncia').setLabel('🛂 Renuncia!!').setStyle(ButtonStyle.Danger)];
+	const renunciaButton = [new ButtonBuilder().setCustomId(RenunciaActions.TRIGGER).setLabel('🛂 Renuncia!!').setStyle(ButtonStyle.Danger)];
 	const buttonsRow = [];
 
 	let content = whosTurnContent + ' ' + trunfoContent;
@@ -367,7 +400,7 @@ function getCardPlayForm() {
 		});
 
 		if (card.guild === gameState.trunfo) {
-			cardLabel += ' 💥';
+			cardLabel += ' 👑';
 		}
 
 		if (!!gameState.pile.length && card.guild === gameState.pile[0].guild) {
@@ -389,7 +422,7 @@ function getCardPlayForm() {
 	const notFirstPlayerContent = 'Na mesa estão as seguintes cartas: ' + gameState.getPileText();
 
 	return {
-		content: `**Escolhe a carta que queres jogar. O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.** - ` + (!!gameState.pile.length ? notFirstPlayerContent : firstPlayerContent) + (devmode ? `és o player numero ${gameState.currentPlayer}` : ''),
+		content: `**Escolhe a carta que queres jogar. O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.** - ` + (!!gameState.pile.length ? notFirstPlayerContent : firstPlayerContent) + (devmode ? ` Este é o player numero ${gameState.currentPlayer}` : ''),
 		components: [playerHandRow, buttonsRow],
 	};
 }
@@ -406,6 +439,7 @@ function cardSelected(interaction) {
 function cardPlayed(interaction) {
 	if (devmode) { console.log('cardPlayed'); }
 	interaction.message.delete();
+	if (!!gameState.renunciaTrigger) { renunciaEndScreen(gameState.renunciaTrigger); return; }
 	gameState.nextMove();
 	gameState.isRoundOver() ? roundEnded() : timeToPlay();
 }
@@ -420,61 +454,99 @@ function roundEnded() {
 function gameEnded() {
 	if (devmode) { console.log('gameEnded'); }
 
-	const renunciaButton = [new ButtonBuilder().setCustomId('renuncia').setLabel('🛂 Renuncia!!').setStyle(ButtonStyle.Danger)];
-	const buttonsRow = [new ActionRowBuilder().addComponents(renunciaButton)];
-
 	let content = `A equipa ${gameState.previousRound.winningTeam} varreu a ronda anterior, levaram ${gameState.previousRound.score} pontos para o cubico. ` + gameState.getPileText(gameState.previousRound.pile);
 	content += '**Jogo feito, nada mais.** A calcular o resultado final, sigurem-se...';
 
-	gameState.interaction.editReply({ content: content, components: buttonsRow });
+	gameState.interaction.editReply({ content: content });
 	botVoiceGameEnd();
 	gameState.calcTeamScores();
 
 	setTimeout(() => {
-		gameEndedScoreboard();
+		!!gameState.renunciaTrigger ? renunciaEndScreen(gameState.renunciaTrigger) : gameEndedScoreboard();
 	}, (devmode ? 1000 : 15000));
 }
 
 function gameEndedScoreboard() {
-	let content = (gameState.gameScore.teamA === gameState.gameScore.teamB)
-		? 'Aquele empatezinho técnico, quem nunca'
-		: `E o vencedor dessa porra foi a equipa ${gameState.gameScore.teamA > gameState.gameScore.teamB ? 'A' : 'B'}. Parabéns seus caralhos. ${gameState.checkForCapote() ? 'Capote nessa porra, o rabinho deles não aguenta' : ''}`;
 
-	content += `\n**[${gameState.gameScore.teamA}] - [${gameState.gameScore.teamB}]**`;
-	gameState.interaction.editReply({ content: content });
+	const close = new ButtonBuilder().setCustomId(GameOverEmbedActions.END).setLabel('🚫 Encerrar mesa').setStyle(ButtonStyle.Danger);
+	const next = new ButtonBuilder().setCustomId(GameOverEmbedActions.MORE).setLabel('🃏 Novo jogo').setStyle(ButtonStyle.Success);
+	const reset = new ButtonBuilder().setCustomId(GameOverEmbedActions.RESET).setLabel('🧽 Resetar resultados').setStyle(ButtonStyle.Success);
+	const buttonsRow = new ActionRowBuilder().addComponents(close, next, reset);
+
+	let content = (gameState.gameScore.teamA === gameState.gameScore.teamB)
+		? 'Aquele empatezinho técnico, quem nunca! 🤝'
+		: `E o vencedor dessa porra foi a **Equipa ${gameState.gameScore.teamA > gameState.gameScore.teamB ? 'A' : 'B'}**. Parabéns seus animais. ${gameState.checkForCapote() ? '**Capote** nessa porra, o rabinho deles não aguenta! 💩💩' : ''}`;
+
+	content += `\nResultado do jogo: **Equipa A** [${gameState.gameScore.teamA}] - [${gameState.gameScore.teamB}] **Equipa B**`;
+	content += `\nResultado acomulado: **Equipa A** [${gameState.continuousScore.teamA}] - [${gameState.continuousScore.teamB}] **Equipa B**`;
+
+	const initFormPage2 = getGameStartForm(1);
+	initFormPage2.components.pop(); // we dont want the buttonsRow
+	gameState.interaction.editReply({ content: content, components: [...initFormPage2.components, buttonsRow] });
+}
+
+function getRenunciaForm() {
+	const playersArray = [];
+	gameState.config.forEach(player => {
+		playersArray.push(new StringSelectMenuOptionBuilder().setLabel(player.name).setValue(player.id));
+	});
+
+	const renuncia = new StringSelectMenuBuilder().setCustomId(RenunciaActions.TARGET).setPlaceholder('🎯 Jogador').addOptions(playersArray);
+	const renunciaRow = new ActionRowBuilder().addComponents(renuncia);
+
+	return { content: '**Identifica o intruja que achas que fez renuncia 🕵️‍♂️**', components: [renunciaRow] };
+}
+
+function renunciaEndScreen(acuserID) {
+	const acuserName = gameState.getPlayerNameByID(acuserID);
+	const offenderID = gameState.renunciasMap.get(acuserID);
+	const offenderName = gameState.getPlayerNameByID(offenderID);
+	const offenderIndex = gameState.getPlayerIndexByID(offenderID);
+
+	// assuming the renuncia is correct -v
+	let winner = !(offenderIndex % 2) ? 'teamA' : 'teamB';
+	let loser = !!(offenderIndex % 2) ? 'teamA' : 'teamB';
+
+	let content = `**ALERTA CM:** O jogador ${acuserName} acusou o jogador ${offenderName} de renúncia!! 😱😱`;
+	gameState.interaction.editReply({ content: content, components: [] });
+
+	if (gameState.isPlayerRenunciaCorrect()) {
+		content = `**E ele estava certo!** O ${offenderName} quebrou as regras na ronda 0, e á pala dessa brincadeira, a sua equipa leva capote neste jogo!\n`;
+	}
+	else {
+		// assumption failed, switcherooo
+		winner = !!(offenderIndex % 2) ? 'teamA' : 'teamB';
+		loser = !(offenderIndex % 2) ? 'teamA' : 'teamB';
+
+		content = `**E ele estava errado! O ${offenderName} não quebrou as regras neste jogo! Capotinho cambuá para a Equipa ${loser.at(-1)} só para não dares para esperto.**`;
+	}
+
+	gameState.gameScore[winner] = 120;
+	gameState.gameScore[loser] = 0;
+	gameState.continuousScore[winner] += 3;
+
+	// esperar alguns segundos
+	setTimeout(() => {
+		gameState.interaction.editReply({ content: content, components: [] });
+	}, 5000);
+
+	setTimeout(() => {
+		gameEndedScoreboard();
+	}, 15000);
 }
 
 function botVoiceGameEnd() {
 	//  toca uma musiquinha 💛 v2
 }
 
-// function getEndGameForm() {
-// 	// action buttons
-// 	const end = new ButtonBuilder().setCustomId(endGameActions.END).setLabel('Terminar o game').setStyle(ButtonStyle.Success);
-// 	const more = new ButtonBuilder().setCustomId(endGameActions.MORE).setLabel('Nova partida').setStyle(ButtonStyle.Primary);
-// 	const reset = new ButtonBuilder().setCustomId(endGameActions.RESET).setLabel('Limpar resultados acomulados').setStyle(ButtonStyle.Secondary);
+function botVoiceGameStart() {
+	// form okay, lets go. dá uma musiquinha de leve tipo jazz. 💛 v2
+}
 
-// 	const buttonsRow = new ActionRowBuilder().addComponents(end, more, reset);
+function botVoiceGoodbye() {
+	// toca um audio clip e sai do canal. 💛 v2
+}
 
-
-// 	return {
-// 		content: '**Temos vencedor. É a equipa X seus filhos da puta - Escolhe o queres fazer agora mother fuckers **',
-// 		// components: [buttonsRow],
-// 	};
-// }
-
-
-// function endGameCloseAction(interaction) {
-// 	interaction.message.delete();
-// 	gameConfig = null;
-// 	gameState = null;
-// }
-
-
-// function newGameRound(reset = false) {
-// 	if (reset) { gameState.resetContinousScores(); }
-// 	gameState.shuffleNewDeck();
-// 	// todo - antes do timetoplay, temnos de settar o currentPlayer d e acordco com o vendcedor do jogo anterior
-// 	timeToPlay(true);
-// }
-
+function botVoiceIntroduction() {
+	// bot entra na sala e toca um clip inicial. 💛 v2
+}
