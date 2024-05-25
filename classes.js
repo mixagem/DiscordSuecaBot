@@ -148,14 +148,10 @@ export class GameState {
 		// this.isGameOpen = false;
 	};
 
-	incrementPlayer() {
-		this.currentPlayer = (this.currentPlayer === 4)
-			? 1
-			: this.currentPlayer + 1;
-	}
+	incrementPlayer() { this.currentPlayer = (this.currentPlayer === 4) ? 1 : this.currentPlayer + 1; }
 
 	getPlayerNameByID(id) {
-		for (let i = 1; i <= this.gameConfig.players.size(); i++) {
+		for (let i = 1; i <= this.gameConfig.players.size; i++) {
 			if (this.gameConfig.players.get(`player${i}`).id === id) {
 				return this.gameConfig.players.get(`player${i}`).name;
 			}
@@ -163,25 +159,18 @@ export class GameState {
 	}
 
 	getPlayerIndexByID(id) {
-
-		for (let i = 1; i <= this.gameConfig.players.size(); i++) {
+		for (let i = 1; i <= this.gameConfig.players.size; i++) {
 			if (this.gameConfig.players.get(`player${i}`).id === id) {
 				return i;
 			}
 		}
 	}
 
+	getPlayerNameByIndex(index) { return this.gameConfig.players.get(`player${index}`).name; }
 
-	getPlayerNameByIndex(index) {
-		return this.gameConfig.players.get(`player${index}`).name;
-	}
-	getPlayerIDByIndex(index) {
-		return this.gameConfig.players.get(`player${index}`).id;
-	}
+	getPlayerIDByIndex(index) { return this.gameConfig.players.get(`player${index}`).id; }
 
-	setTempCard(cardOptionValue) {
-		this.tempCard = { guild: cardOptionValue.split('#')[0], id: cardOptionValue.split('#')[1] };
-	}
+	setTempCard(cardOptionValue) { this.tempCard = { guild: cardOptionValue.split('#')[0], id: cardOptionValue.split('#')[1] }; }
 
 	shuffleNewDeck() {
 		this.pile = [];
@@ -200,13 +189,11 @@ export class GameState {
 		this.renunciasMap = new Map();
 		this.renunciaTrigger = '';
 
-
 		Object.values(Guilds).forEach(guild => {
 			Object.values(Cards).forEach(id => {
 				this.pile.push({ guild: guild, id: id });
 			});
 		});
-
 
 		while (!!this.pile.length) {
 			const rng = randomPick(this.pile.length);
@@ -231,7 +218,6 @@ export class GameState {
 		}
 
 		if (!this.isHandValid()) { this.shuffleNewDeck(); }
-
 	}
 
 	getNaipeName(guildId) {
@@ -251,7 +237,6 @@ export class GameState {
 		let string = '';
 
 		for (let i = 0; i < pile.length; i++) {
-
 			for (const [key, value] of Object.entries(Cards)) {
 				if (+pile[i].id !== value) { continue; }
 				string += '[ ' + (key.at(0) + key.slice(1).toLowerCase());
@@ -259,6 +244,7 @@ export class GameState {
 
 			string += ' de ' + this.getNaipeName(pile[i].guild) + ']  ';
 		}
+
 		return string;
 	}
 
@@ -274,8 +260,9 @@ export class GameState {
 	}
 
 	isHandValid() {
-		if (devmode) { return true; }
-		// tem de ter 10 pontos, ou 1 trunfo no mínimo
+		for (let i = 1; i <= 4; i++) {
+			if (this.calcScore(this[`player${i}Hand`]) <= 10) { return false; }
+		}
 		return true;
 	}
 
@@ -286,33 +273,24 @@ export class GameState {
 		const guildToFollow = this.pile[0].guild;
 		if (this.tempCard.guild === guildToFollow) { return; }
 
-		// tinha carte do naipe, há renuncia
+		// não jogou o mesmo naipe...
 		const playerHand = this[`player${this.currentPlayer}Hand`];
 		for (const card of playerHand) {
 			if (card.guild === guildToFollow) {
-				this.renunciaFound();
+				// ...mas tinha carta do mesmo naipe, há renuncia
+				const currentRound = Math.floor([...this.teamAScorePile, ...this.teamBScorePile].length / 4) + 1;
+				this.renunciasLog.push({ offenderID: this.getPlayerIDByIndex(this.currentPlayer), offenderName: this.getPlayerNameByIndex(this.currentPlayer), play: [...this.pile, this.tempCard], round: currentRound });
 				return;
 			}
 		}
-
-		return;
-	}
-
-	renunciaFound() {
-		const currentRound = Math.floor([...this.teamAScorePile, ...this.teamBScorePile].length / 4) + 1;
-		this.renunciasLog.push({ offenderID: this.getPlayerIDByIndex(this.currentPlayer), offenderName: this.getPlayerNameByIndex(this.currentPlayer), play: [...this.pile, this.tempCard], round: currentRound });
 	}
 
 	nextMove() {
 		this.checkForRenuncia();
 		this.pile.push(this.tempCard);
 		for (let i = 0; i < this[`player${this.currentPlayer}Hand`].length; i++) {
-			if ((this[`player${this.currentPlayer}Hand`][i].id === +this.tempCard.id)
-				&& (this[`player${this.currentPlayer}Hand`][i].guild === this.tempCard.guild)) {
-				this[`player${this.currentPlayer}Hand`] = [
-					...this[`player${this.currentPlayer}Hand`].slice(0, i),
-					...this[`player${this.currentPlayer}Hand`].slice(i + 1),
-				];
+			if (this.areTheseCardsTheSame(this[`player${this.currentPlayer}Hand`][i], this.tempCard)) {
+				this[`player${this.currentPlayer}Hand`] = [...this[`player${this.currentPlayer}Hand`].slice(0, i), ...this[`player${this.currentPlayer}Hand`].slice(i + 1)];
 				this.tempCard = null;
 				break;
 			}
@@ -320,9 +298,7 @@ export class GameState {
 		this.incrementPlayer();
 	}
 
-	isRoundOver() {
-		return this.pile.length === 4;
-	}
+	isRoundOver() { return this.pile.length === 4; }
 
 	calcScore(pile) {
 		let score = 0;
@@ -353,12 +329,10 @@ export class GameState {
 		this.currentPlayer = this.previousRound.winnerIndex;
 	}
 
-	areTheseCardsTheSame(card1, card2) {
-		return +card1.id === +card2.id && card1.guild === card2.guild;
-	}
+	areTheseCardsTheSame(card1, card2) { return +card1.id === +card2.id && card1.guild === card2.guild; }
 
 	headToHeadCards(card1, card2) {
-		// jogaste trunfo
+		// foi jogado trunfo
 		if (card2.guild === this.trunfo) {
 			// se a original não era trunfo, you win
 			if (card1.guild !== this.trunfo) { return card2; }
@@ -369,7 +343,7 @@ export class GameState {
 				: card2;
 		}
 
-		// não jogaste trunfo, e a original era trunfo, you lose
+		// não foi jogado trunfo, e a original era trunfo, you lose
 		if (card1.guild === this.trunfo) {
 			return card1;
 		}
@@ -383,9 +357,7 @@ export class GameState {
 			: card2;
 	}
 
-	isGameOver() {
-		return [...this.teamAScorePile, ...this.teamBScorePile].length === (devmode ? 8 : 40);
-	}
+	isGameOver() { return [...this.teamAScorePile, ...this.teamBScorePile].length === (devmode ? 8 : 40); }
 
 	calcTeamScores() {
 		let score = 0;
@@ -396,39 +368,25 @@ export class GameState {
 		this.teamBScorePile.forEach(card => { score += Math.floor(CardScores.get(+card.id)); });
 		this.gameScore.teamB = score;
 
-
 		this.updateContinousScores();
 	}
 
 	updateContinousScores() {
 		const isCapote = this.checkForCapote();
 
-		if (this.gameScore.teamA > this.gameScore.teamB) {
-			this.continuousScore.teamA += isCapote ? 3 : 1;
-		}
-		else if (this.gameScore.teamA < this.gameScore.teamB) {
-			this.continuousScore.teamB += isCapote ? 3 : 1;
-		}
+		if (this.gameScore.teamA > this.gameScore.teamB) { this.continuousScore.teamA += isCapote ? 3 : 1; }
+		else if (this.gameScore.teamA < this.gameScore.teamB) { this.continuousScore.teamB += isCapote ? 3 : 1; }
 	}
 
-	checkForCapote(scoreA = this.gameScore.teamA, scoreB = this.gameScore.teamB) {
-		const diff = (scoreA > scoreB ? scoreA - scoreB : scoreB - scoreA);
-		return diff >= 90;
-	}
+	checkForCapote(scoreA = this.gameScore.teamA, scoreB = this.gameScore.teamB) { return (scoreA > scoreB ? scoreA - scoreB : scoreB - scoreA) >= 90; }
 
+	resetContinousScores() { this.continuousScore.teamA = 0; this.continuousScore.teamB = 0; }
 
-	resetContinousScores() {
-		this.continuousScore.teamA = 0;
-		this.continuousScore.teamB = 0;
-	}
-
-	triggerRenuncia(userid) {
-		this.renunciaTrigger = userid;
-	}
+	triggerRenuncia(userid) { this.renunciaTrigger = userid; }
 
 	isPlayerRenunciaCorrect(userid) {
 		if (!this.renunciasLog.length) { return false; }
-		const { id } = this.renunciasMap.get(userid);
+		const id = this.renunciasMap.get(userid);
 		for (const renuncia of this.renunciasLog) {
 			if (renuncia.offenderID === id) {
 				return true;
