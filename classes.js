@@ -150,7 +150,6 @@ export class GameState {
 		this.continuousScore = { teamA: 0, teamB: 0 };
 		this.interaction = null;
 		this.gameConfig = null;
-		// this.isGameOpen = false;
 	};
 
 	shuffleNewDeck() {
@@ -386,8 +385,7 @@ export class GameState {
 	getCardName(card) {
 		for (const [key, value] of Object.entries(Cards)) {
 			if (+card.id !== value) { continue; }
-			// console.log('[ ' + (key.at(0) + key.slice(1).toLowerCase()) + ' de ' + this.getNaipeName(pile[i].guild) + ']')
-			return '[ ' + (key.at(0) + key.slice(1).toLowerCase()) + ' de ' + this.getNaipeName(card.guild) + ']';
+			return (key.at(0) + key.slice(1).toLowerCase()) + ' de ' + this.getNaipeName(card.guild);
 		}
 	}
 

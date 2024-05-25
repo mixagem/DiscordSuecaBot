@@ -14,8 +14,8 @@ const __dirname = path.dirname(__filename);
 
 // devmode
 export const devmode = true;
-export const devmode2 = false; // numero de players no aarray da renuncia hardcoded
-export const devModeVOICHANNELID = '510206902135685133'; // não esquecer de alterar para o canal de voice ond estamos
+export const devmode2 = true; // numero de players no aarray da renuncia hardcoded
+export const devModeVOICHANNELID = '494983477351940096'; // não esquecer de alterar para o canal de voice ond estamos
 
 // secrets
 const { TOKEN, GUILDID, TEXTCHANNELID, VOICECHANNELID, CLIENTID } = require('./config.json');
@@ -265,7 +265,7 @@ function gameDraw(interaction, dealerIndex) {
 function timeToPlay() {
 
 	const whosTurnContent = `🤠 Está na vez do **${gameConfig.players.get(`player${gameState.currentPlayer}`).name}** jogar.`;
-	const trunfoContent = `👑 O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.`;
+	const trunfoContent = `O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.`;
 	const pileContent = `🃏 Na mesa temos: ${gameState.getPileText()}`;
 
 	const renunciaButton = [new ButtonBuilder().setCustomId(RenunciaActions.TRIGGER).setLabel('🛂 Renúncia!!').setStyle(ButtonStyle.Danger)];
@@ -277,7 +277,7 @@ function timeToPlay() {
 		content = previouslyTurnContent + '\n' + content;
 		content += '\n' + pileContent;
 	}
-	if (!!gameState.previousRound) { content += '\n' + `🧹 A equipa ${gameState.previousRound.winningTeam} varreu a ronda anterior, levaram ${gameState.previousRound.score} pontos para o cubico. ` + gameState.getPileText(gameState.previousRound.pile); }
+	if (!!gameState.previousRound) { content += '\n' + `🧹 A equipa ${gameState.previousRound.winningTeam} varreu a ronda anterior, levaram ${gameState.previousRound.score} pontos para o cubico com a seguinte mão: ` + gameState.getPileText(gameState.previousRound.pile); }
 	if (!!gameState.pile.length || !!gameState.previousRound) { buttonsRow.push(new ActionRowBuilder().addComponents(renunciaButton)); };
 
 	gameState.interaction.editReply({ content: content, components: buttonsRow, embeds: getEmbedsForCards(gameState.pile) });
@@ -452,7 +452,6 @@ function getCardPlayForm() {
 	};
 }
 
-
 function getRenunciaForm() {
 	let playersArray = [];
 	gameConfig.players.forEach(player => {
@@ -460,7 +459,7 @@ function getRenunciaForm() {
 	});
 
 	if (devmode && !devmode2) { playersArray = [playersArray[0]]; }
-	if (devmode2) { playersArray = [playersArray[0], playersArray[1]]; }
+	if (devmode2) { playersArray = [playersArray[0], playersArray[1]], playersArray[2]; }
 
 	const renuncia = new StringSelectMenuBuilder().setCustomId(RenunciaActions.TARGET).setPlaceholder('🎯 Jogador').addOptions(playersArray);
 	const renunciaRow = new ActionRowBuilder().addComponents(renuncia);
@@ -560,8 +559,6 @@ async function getVoiceChannelConfig() {
 	});
 };
 
-// v3 - 30secs to autoplay; 3 autoplays dá capote (anti-afk).
-
 function getCardImgUrl(card) {
 	let cardUrl = 'https://mambosinfinitos.pt/discobots/sueca/cards/';
 
@@ -590,13 +587,14 @@ function getCardImgUrl(card) {
 
 function getEmbedsForCards(pile) {
 	const embeds = [];
-
-	pile.reverse().forEach((card, i) => {
+	pile.forEach(card => {
 		embeds.push(new EmbedBuilder()
-			.setColor([Guilds.COPAS, Guilds.OUROS].includes(card.guild) ? 0xFF0000 : 0x000000) // red or black according to card cuild
-			// .setTitle(gameState.getCardName(card).replace('[','').replace(']',''))
+			.setColor(card.guild === gameState.trunfo
+				? 0x8000FF
+				: [Guilds.COPAS, Guilds.OUROS].includes(card.guild)
+					? 0xFF0000
+					: 0x000000)
 			.setThumbnail(getCardImgUrl(card)),
-			// .setDescription(`O jogador ${gameState.gameConfig.players.get(`player${gameState.currentPlayer - i + 1 === 0 ? 4 : gameState.currentPlayer - i + 1}`).name}\njogou ${gameState.getCardName(card.name).replace('[','').replace(']','')}`),
 		);
 	});
 	return embeds;
