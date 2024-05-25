@@ -377,15 +377,18 @@ export class GameState {
 		let string = '';
 
 		for (let i = 0; i < pile.length; i++) {
-			for (const [key, value] of Object.entries(Cards)) {
-				if (+pile[i].id !== value) { continue; }
-				string += '[ ' + (key.at(0) + key.slice(1).toLowerCase());
-			}
-
-			string += ' de ' + this.getNaipeName(pile[i].guild) + ']  ';
+			string += this.getCardName(pile[i]) + ' ';
 		}
 
 		return string;
+	}
+
+	getCardName(card) {
+		for (const [key, value] of Object.entries(Cards)) {
+			if (+card.id !== value) { continue; }
+			// console.log('[ ' + (key.at(0) + key.slice(1).toLowerCase()) + ' de ' + this.getNaipeName(pile[i].guild) + ']')
+			return '[ ' + (key.at(0) + key.slice(1).toLowerCase()) + ' de ' + this.getNaipeName(card.guild) + ']';
+		}
 	}
 
 	triggerRenuncia(userid) { this.renunciaTrigger = userid; }
