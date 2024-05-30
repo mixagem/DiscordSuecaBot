@@ -1,5 +1,5 @@
-const devMini = false;
-const devShort = false;
+const twoCardsDeck = false;
+const fourCardsDeck = false;
 
 export class GameConfig {
 	players;
@@ -49,9 +49,9 @@ export const Guilds = {
 	'COPAS': 'hearts',
 };
 
-export const Cards = devMini
+export const Cards = twoCardsDeck
 	? { 'ÁS': 1, 'MANILHA': 7 }
-	: devShort
+	: fourCardsDeck
 		? { 'ÁS': 1, 'MANILHA': 7, 'VALETE': 11, 'REI': 13 }
 		: {
 			'ÁS': 1,
@@ -106,7 +106,7 @@ export const RenunciaActions = {
 };
 
 export const CardScores = new Map();
-if (!devMini && !devShort) {
+if (!twoCardsDeck && !fourCardsDeck) {
 	CardScores.set(Cards.DOIS, 0.2);
 	CardScores.set(Cards.TRÊS, 0.3);
 	CardScores.set(Cards.QUATRO, 0.4);
@@ -114,7 +114,7 @@ if (!devMini && !devShort) {
 	CardScores.set(Cards.SEIS, 0.6);
 	CardScores.set(Cards.DAMA, 2);
 }
-if ((devShort && !devMini) || (!devMini && !devShort)) {
+if ((fourCardsDeck && !twoCardsDeck) || (!twoCardsDeck && !fourCardsDeck)) {
 	CardScores.set(Cards.VALETE, 3);
 	CardScores.set(Cards.REI, 4);
 }
@@ -197,21 +197,23 @@ export class GameState {
 					break;
 			}
 		}
-
-		if (!this.isHandValid()) { this.shuffleNewDeck(); }
-
-		this.sortHands();
 	}
 
-	// perbonal best, 4 nested 🌐
+	// 4 nest loops, oh dear.
+	// that beeing said, it is capped at (worst case scenario) 4x4x10xY interactions.
+	// 4 hands to order, 4 card guilds to order by, 10 cards each hands, and then <0-9> cards to go throu in order to get a guild/value ordered hand
 	sortHands() {
+		// players' loop
 		for (let i = 1; i <= 4; i++) {
 			const sortedHand = [];
+			// getting ordered by value cards from guild loop
 			Object.values(Guilds).forEach(guild => {
 				let guildCards = [];
+				// getting cards from guild loop
 				this[`player${i}Hand`].forEach(card => {
 					if (card.guild === guild) {
 						let newIndex = 0;
+						// ordering guild cards by value loop
 						guildCards.forEach(guildCard => {
 							if (CardScores.get(+guildCard.id) < CardScores.get(+card.id)) {
 								newIndex++;
@@ -229,19 +231,52 @@ export class GameState {
 
 	isHandValid() {
 		for (let i = 1; i <= 4; i++) {
-			if (this.calcScore(this[`player${i}Hand`]) <= 10) { return false; }
+			const playerHasTrunfo = !!this[`player${i}Hand`].find(card => card.id === this.trunfo);
+			if (playerHasTrunfo) { continue; }
+
+			if (this.calcScore(this[`player${i}Hand`]) < 10) { return false; }
 		}
 		return true;
 	}
 
 	setTrunfo() {
-		if (this.gameConfig.trunfo === 'up') { this.trunfo = this[`player${this.currentPlayer}Hand`][0].guild; }
-		else {
-			const lastPlayer = (this.currentPlayer + 3 > 4)
-				? this.currentPlayer - 1
-				: this.currentPlayer + 3;
+		// shuffeling is player agnostic, so we need to shift the hands according to the order of play before setting the trunfo
+		this.shiftHands();
 
-			this.trunfo = this[`player${lastPlayer}Hand`][0].guild;
+		this.trunfo = this.gameConfig.trunfo === 'up'
+			? this[`player${this.currentPlayer}Hand`][0].guild
+			: this[`player${this.currentPlayer}Hand`].at(-1).guild;
+
+		// and after setting the trunfo, we can then order the cards for better gaming experience
+		this.sortHands();
+	}
+
+	shiftHands() {
+
+		// if (this.gameConfig.trunfo === 'up') {
+		// 	this[`player${this.currentPlayer}Hand`] = [...tempShiftPivotObject.p1];
+		// 	for (let i = 1; i <= 3; i++) {
+		// 		const nextPlayer = this.currentPlayer + i > 4 ? this.currentPlayer + i - 4 : this.currentPlayer + i;
+		// 		this[`player${this.nextPlayer}Hand`] = [...tempShiftPivotObject[`p${i + 1}`]];
+		// 	}
+		// }
+		// else {
+		// 	this[`player${this.currentPlayer}Hand`] = [...tempShiftPivotObject.p4];
+		// 	for (let i = 1; i <= 3; i++) {
+		// 		const nextPlayer = this.currentPlayer + i > 4 ? this.currentPlayer + i - 4 : this.currentPlayer + i;
+		// 		this[`player${this.nextPlayer}Hand`] = [...tempShiftPivotObject[`p${i}`]];
+		// 	}
+		// }
+
+		const tempShiftPivotObject = { p1: [...this.player1Hand], p2: [...this.player2Hand], p3: [...this.player3Hand], p4: [...this.player4Hand] };
+
+		this[`player${this.currentPlayer}Hand`] = this.gameConfig.trunfo === 'up'
+			? [...tempShiftPivotObject.p1]
+			: [...tempShiftPivotObject.p4];
+
+		for (let i = 1; i <= 3; i++) {
+			const nextPlayer = this.currentPlayer + i > 4 ? this.currentPlayer + i - 4 : this.currentPlayer + i;
+			this[`player${nextPlayer}Hand`] = [...tempShiftPivotObject[`p${i + (+!!this.gameConfig.trunfo === 'up')}`]];
 		}
 	}
 
@@ -268,12 +303,11 @@ export class GameState {
 		if (this.tempCard.guild === guildToFollow) { return; }
 
 		// não jogou o mesmo naipe...
-		const playerHand = this[`player${this.currentPlayer}Hand`];
-		for (const card of playerHand) {
+		for (const card of this[`player${this.currentPlayer}Hand`]) {
 			if (card.guild === guildToFollow) {
 				// ...mas tinha carta do mesmo naipe, há renuncia
 				const currentRound = Math.floor([...this.teamAScorePile, ...this.teamBScorePile].length / 4) + 1;
-				this.renunciasLog.push({ offenderID: this.getPlayerIDByIndex(this.currentPlayer), offenderName: this.getPlayerNameByIndex(this.currentPlayer), play: [...this.pile, this.tempCard], round: currentRound });
+				this.renunciasLog.push({ offenderID: this.getPlayerIDByIndex(this.currentPlayer), offenderName: this.getPlayerNameByIndex(this.currentPlayer), play: [...this.pile, this.tempCard], round: currentRound, possiblePlay: card, fullHand: this[`player${this.currentPlayer}Hand`] });
 				return;
 			}
 		}
@@ -340,7 +374,7 @@ export class GameState {
 
 	areTheseCardsTheSame(card1, card2) { return +card1.id === +card2.id && card1.guild === card2.guild; }
 
-	isGameOver() { return [...this.teamAScorePile, ...this.teamBScorePile].length === (devMini ? 8 : devShort ? 16 : 40); }
+	isGameOver() { return [...this.teamAScorePile, ...this.teamBScorePile].length === (twoCardsDeck ? 8 : fourCardsDeck ? 16 : 40); }
 
 	calcTeamScores() {
 		let score = 0;
@@ -357,11 +391,12 @@ export class GameState {
 	updateContinousScores() {
 		const isCapote = this.checkForCapote();
 
-		if (this.gameScore.teamA > this.gameScore.teamB) { this.continuousScore.teamA += isCapote ? 3 : 1; }
-		else if (this.gameScore.teamA < this.gameScore.teamB) { this.continuousScore.teamB += isCapote ? 3 : 1; }
+		if (this.gameScore.teamA > this.gameScore.teamB) { this.continuousScore.teamA += isBandeira ? 4 : isCapote ? 2 : 1; }
+		else if (this.gameScore.teamA < this.gameScore.teamB) { this.continuousScore.teamB += isBandeira ? 4 : isCapote ? 2 : 1; }
 	}
 
 	checkForCapote(scoreA = this.gameScore.teamA, scoreB = this.gameScore.teamB) { return (scoreA > scoreB ? scoreA - scoreB : scoreB - scoreA) >= 90; }
+	checkForBandeira(scoreA = this.gameScore.teamA, scoreB = this.gameScore.teamB) { return (scoreA === 120 || scoreB === 120); }
 
 	resetContinousScores() { this.continuousScore.teamA = 0; this.continuousScore.teamB = 0; }
 

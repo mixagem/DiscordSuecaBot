@@ -13,18 +13,18 @@ const __filename = url.fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // devmode
-export const devmode = true;
-export const devmode2 = false; // numero de players no aarray da renuncia hardcoded
-export const devModeVOICHANNELID = '494983477351940096'; // não esquecer de alterar para o canal de voice ond estamos
+export const soloDevMode = true;
+export const publicDevMode = false;
+export const publicDevModeSize = false;
 
 // secrets
-const { TOKEN, GUILDID, TEXTCHANNELID, VOICECHANNELID, CLIENTID } = require('./config.json');
+const { TOKEN, GUILDID, TEXTCHANNELID, CLIENTID } = require('./config.json');
 
 // server and channel info
 let GUILD = null;
 let VOICECHANNEL = null;
 let VOICECHANNELCONNECTION = null;
-let AUDIOPLAYER = createAudioPlayer();
+let AUDIOPLAYER = null;
 let bgmMusicLoop = false;
 
 // game state
@@ -67,7 +67,48 @@ for (const folder of commandFolders) {
 
 // listeners
 CLIENT.on(Events.Error, console.error);
+CLIENT.on(Events.Error, errorHandling);
 CLIENT.on(Events.InteractionCreate, interactionInit);
+
+async function errorHandling(any) {
+	try {
+		// deleting DM from users in the game
+		if (!!gameConfig) {
+			gameConfig.players.forEach(id => {
+				CLIENT.users.fetch(id).then(user => {
+					user.deleteDM();
+				});
+			});
+		}
+
+		// reset game states
+		gameConfig = null;
+		gameState = null;
+
+		// reset voice states
+		bgmMusicLoop = false;
+		if (!!VOICECHANNELCONNECTION) { VOICECHANNELCONNECTION.destroy(); }
+		AUDIOPLAYER = null;
+
+		// deleting messsages from text channel
+		const textChannel = GUILD.channels.cache.find(channel => channel.id === TEXTCHANNELID);
+		textChannel.messages.fetch()
+			.then(messages => {
+				messages.forEach(message => {
+					message.delete();
+				});
+
+				textChannel.send({ content: '**Desculpamos o incómodo causado, mas o Cota da Sueca teve uma trombose mas já se encontra pronto para outra.**' })
+					.then(finalMessage => setTimeout(() => {
+						finalMessage.delete();
+					}, 10000));
+			});
+
+	}
+
+	catch { console.log('couldn\'t catch error'); }
+}
+
 
 // login
 CLIENT.once(Events.ClientReady, () => { onLogin(); });
@@ -75,7 +116,6 @@ CLIENT.login(TOKEN);
 
 function onLogin() {
 	GUILD = CLIENT.guilds.cache.get(GUILDID);
-	VOICECHANNEL = GUILD.channels.cache.find(channel => channel.id === (devmode ? devModeVOICHANNELID : VOICECHANNELID));
 
 	console.log(`Ready to GO! _ ${CLIENT.user.tag}!`);
 }
@@ -91,8 +131,19 @@ async function interactionInit(interaction) {
 		// if a gametable is already open, ignore the command
 		if (!!gameConfig) { return; }
 
+		// user needs to be connected to a voice channel
+		if (!interaction.member.voice.channel) {
+			interaction.member.send({ content: '**🔊 Para jogares á Sueca, precisas de estar ligado no server dos rapazis**' })
+				.then(message => {
+					setTimeout(() => { message.delete(); }, 5000);
+				});
+			return;
+		}
+
+		VOICECHANNEL = GUILD.channels.cache.find(channel => channel.id === (interaction.member.voice.channel.id));
+
 		const command = interaction.client.commands.get(interaction.commandName);
-		await command.execute(interaction).then(_ => { setTimeout(() => { botTriggered(interaction); }, ((devmode && !devmode2) ? 1000 : 3000)); });
+		await command.execute(interaction).then(_ => { setTimeout(() => { botTriggered(interaction); }, (soloDevMode ? 1000 : 3000)); });
 	}
 
 	// autocompletes
@@ -155,7 +206,7 @@ function botTriggered(interaction) {
 }
 
 function areThereEnoughPlayers() {
-	return devmode || VOICECHANNEL.members.size >= 4;
+	return soloDevMode || publicDevMode || VOICECHANNEL.members.size >= 4;
 }
 
 function notEnoughPlayers(interaction) {
@@ -209,7 +260,7 @@ function usersWantToStartTheGame(interaction) {
 }
 
 function isGameConfigValid() {
-	if (devmode) { return true; }
+	if (soloDevMode || publicDevMode) { return true; }
 	if (!gameConfig.dealer || !gameConfig.trunfo) { return false; }
 	const players = [];
 	for (let i = 1; i <= 4; i++) {
@@ -242,14 +293,14 @@ function gotoShuffeling(interaction, dealerIndex) {
 	setTimeout(() => {
 		const playerIndex = (dealerIndex + 2 > 4 ? dealerIndex + 2 - 4 : dealerIndex + 2);
 		interaction.editReply({ content: `🔪 O **${gameConfig.players.get(`player${playerIndex}`).name}** está a cortar o beat. ` });
-	}, ((devmode && !devmode2) ? 500 : 3500));
+	}, (soloDevMode ? 500 : 3500));
 
 	setTimeout(() => {
 		const playerIndex = (dealerIndex + 3 > 4 ? dealerIndex + 3 - 4 : dealerIndex + 3);
 		interaction.editReply({ content: `📦 O **${gameConfig.players.get(`player${playerIndex}`).name}** está a distribuir o brinde. ` });
-	}, ((devmode && !devmode2) ? 1000 : 5000));
+	}, (soloDevMode ? 1000 : 5000));
 
-	setTimeout(() => { gameDraw(interaction, dealerIndex); }, ((devmode && !devmode2) ? 1500 : 8000));
+	setTimeout(() => { gameDraw(interaction, dealerIndex); }, (soloDevMode ? 1500 : 8000));
 }
 
 function gameDraw(interaction, dealerIndex) {
@@ -259,6 +310,15 @@ function gameDraw(interaction, dealerIndex) {
 	gameState.interaction = interaction;
 	gameState.gameConfig = gameConfig;
 	gameState.setTrunfo();
+
+	while (!gameState.isHandValid()) {
+		gameState.shuffleNewDeck();
+		gameState.currentPlayer = dealerIndex;
+		gameState.interaction = interaction;
+		gameState.gameConfig = gameConfig;
+		gameState.setTrunfo();
+	}
+
 	timeToPlay();
 }
 
@@ -321,7 +381,7 @@ function gameEnded() {
 		!!gameState.renunciaTrigger
 			? renunciaEndScreen(gameState.renunciaTrigger)
 			: gameEndedScoreboard();
-	}, ((devmode && !devmode2) ? 1000 : 10000));
+	}, (soloDevMode ? 1000 : 10000));
 }
 
 function gameEndedScoreboard() {
@@ -333,7 +393,12 @@ function gameEndedScoreboard() {
 
 	let content = gameState.gameScore.teamA === gameState.gameScore.teamB
 		? '🤝 Aquele empatezinho técnico, quem nunca! 🤝'
-		: `🎊 E o vencedor dessa porra foi a **Equipa ${gameState.gameScore.teamA > gameState.gameScore.teamB ? 'A' : 'B'}**. Parabéns seus animais. 🎊${gameState.checkForCapote() ? ' 🔫 **Capote** nessa porra, o rabinho deles não aguenta! 💩' : ''}`;
+		: `🎊 E o vencedor dessa porra foi a **Equipa ${gameState.gameScore.teamA > gameState.gameScore.teamB ? 'A' : 'B'}**.
+		 Parabéns seus animais. 🎊${gameState.checkForBandeira()
+			? ' 🏴‍☠️ **Bandeira**, 120-0 é capote máximus, jogo feito nada mais!'
+			: gameState.checkForCapote()
+				? ' 🔫 **Capote** nessa porra, o rabinho deles não aguenta! 💩'
+				: ''}`;
 
 	content += `\n🔷 Resultado do jogo: **Equipa A** [${gameState.gameScore.teamA}] - [${gameState.gameScore.teamB}] **Equipa B** 🔷`;
 	content += `\n🔶 Resultado acomulado: **Equipa A** [${gameState.continuousScore.teamA}] - [${gameState.continuousScore.teamB}] **Equipa B** 🔶`;
@@ -446,7 +511,7 @@ function getCardPlayForm() {
 	const notFirstPlayerContent = 'Na mesa estão as seguintes cartas: ' + gameState.getPileText();
 
 	return {
-		content: `**🃏 Escolhe a carta que queres jogar. O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.** - ` + (!!gameState.pile.length ? notFirstPlayerContent : firstPlayerContent) + ((devmode && !devmode2) ? ` Este é o player numero ${gameState.currentPlayer}` : ''),
+		content: `**🃏 Escolhe a carta que queres jogar. O trunfo é ${gameState.getNaipeName(gameState.trunfo)}.** - ` + (!!gameState.pile.length ? notFirstPlayerContent : firstPlayerContent) + (soloDevMode ? ` **DEV:** Este é o player numero ${gameState.currentPlayer}` : ''),
 		components: [playerHandRow, buttonsRow],
 		embeds: getEmbedsForCards(gameState.pile),
 	};
@@ -458,8 +523,13 @@ function getRenunciaForm() {
 		playersArray.push(new StringSelectMenuOptionBuilder().setLabel(player.name).setValue(player.id));
 	});
 
-	if (devmode && !devmode2) { playersArray = [playersArray[0]]; }
-	if (devmode2) { playersArray = [playersArray[0], playersArray[1]], playersArray[2]; }
+	if (soloDevMode) { playersArray = [playersArray[0]]; }
+
+	if (publicDevMode) {
+		for (let i = 0; i < 4 - publicDevModeSize - i; i++) {
+			playersArray.pop();
+		}
+	}
 
 	const renuncia = new StringSelectMenuBuilder().setCustomId(RenunciaActions.TARGET).setPlaceholder('🎯 Jogador').addOptions(playersArray);
 	const renunciaRow = new ActionRowBuilder().addComponents(renuncia);
@@ -486,18 +556,18 @@ function renunciaEndScreen(acuserID) {
 	gameState.interaction.editReply({ content: content, components: [], embeds: [] });
 
 	if (gameState.isPlayerRenunciaCorrect(acuserID)) {
-		content = `✅✅✅ **E ele estava certo!** O ${offenderName} quebrou as regras na ronda ${gameState.renunciaRound}, e á pala dessa brincadeira, a Equipa ${loser.at(-1)} levou capote neste jogo! 💩`;
+		content = `✅✅✅ **E ele estava certo!** O ${offenderName} quebrou as regras na ronda ${gameState.renunciaRound}, e por causa dessa brincadeira, a Equipa ${loser.at(-1)} perdeu o jogo! 💩`;
 	}
 	else {
 		// assumption failed, switcherooo
 		winner = !!(offenderIndex % 2) ? 'teamA' : 'teamB';
 		loser = !(offenderIndex % 2) ? 'teamA' : 'teamB';
-		content = `❌❌❌ **Mas ele estava errado! O ${offenderName} não quebrou as regras neste jogo! Para não dares para esperto, a Equipa ${loser.at(-1)} vai levar um capotinho cambuá nesse jogo.** 💩`;
+		content = `❌❌❌ **Mas ele estava errado! O ${offenderName} não quebrou as regras neste jogo! Para não dares para esperto, a Equipa ${loser.at(-1)} perdeu o jogo!** 💩`;
 	}
 
-	gameState.gameScore[winner] = 120;
+	gameState.gameScore[winner] = 0;
 	gameState.gameScore[loser] = 0;
-	gameState.continuousScore[winner] += 3;
+	gameState.continuousScore[winner] += 1;
 
 	setTimeout(() => { gameState.interaction.editReply({ content: content, components: [] }); }, 5000);
 	setTimeout(() => { gameEndedScoreboard(); }, 15000);
@@ -539,10 +609,11 @@ function botVoiceGameStart() {
 function botVoiceGoodbye() {
 	const src = createAudioResource('./audio/goodbye.mp3');
 	AUDIOPLAYER.play(src);
-	AUDIOPLAYER.on('idle', () => { VOICECHANNELCONNECTION.destroy(); AUDIOPLAYER = createAudioPlayer(); });
+	AUDIOPLAYER.on('idle', () => { VOICECHANNELCONNECTION.destroy(); AUDIOPLAYER = null; });
 }
 
 function botVoiceIntroduction() {
+	AUDIOPLAYER = createAudioPlayer();
 	getVoiceChannelConfig().then(voiceChannel => {
 		VOICECHANNELCONNECTION = voiceChannel;
 		VOICECHANNELCONNECTION.subscribe(AUDIOPLAYER);
